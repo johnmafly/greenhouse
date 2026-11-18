@@ -10,5 +10,6 @@
     "test": "node --test \"**/test/*.test.ts\"",
     "board:build": "node board/build.ts",
     "greenhouse": "node cli/src/main.ts"
-  }
+  },
+  "dependencies": { "playwright": "1.65.1" }
 }
