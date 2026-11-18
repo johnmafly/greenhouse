@@ -1,0 +1,7 @@
+# Spike submission for issue #2 (pr_opened trigger test). Closed unmerged.
+slug: spike
+round: 0
+repo: johnmafly/greenhouse
+sha: "0000000000000000000000000000000000000000"
+deployment_url: "https://example.invalid/"
+change_log: "spike: pr_opened trigger test"
