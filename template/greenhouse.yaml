@@ -17,3 +17,19 @@ content:
   comparison: /docs/comparison/
   pricing: /pricing/
   signup: /signup/
+# What each pricing tier costs and what it costs to serve one customer on it (assisted pricing gate:
+# every tier's name and price must be on the pricing content, no paid tier below its cost to
+# serve, and the self-hosting path shown when self_host is true). Example numbers only.
+cost_model:
+  currency: USD
+  period: month
+  self_host: true
+  tiers:
+    - name: Free
+      price: 0
+      cost_to_serve: 0
+      includes: Self-hosted open-source edition, community support.
+    - name: Hosted
+      price: 20
+      cost_to_serve: 6
+      includes: Hosted by us, with email support.

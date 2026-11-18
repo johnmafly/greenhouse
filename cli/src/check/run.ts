@@ -28,7 +28,12 @@ import {
   specSamplesGate,
 } from "./gates.ts";
 import type { CorpusFile } from "./gates.ts";
-import { readSiblings, templateLikenessGate } from "./likeness.ts";
+import { readSiblings, templateLikenessGate, templateVisual, visualSignature } from "./likeness.ts";
+import type { VisualInput } from "./likeness.ts";
+import { browserRenderer, claimSweepGate, claimsGate, hiddenTextGate, pricingGate, reviewerInstructionGate, socialProofGate } from "./assisted.ts";
+import type { ClaimsOptions, HiddenTextOptions, SweepOptions } from "./assisted.ts";
+import type { Judge } from "./judge.ts";
+import { greenhouseHome } from "./lock.ts";
 import { lighthouseGate } from "./lighthouse.ts";
 import type { LhRunner } from "./lighthouse.ts";
 import { noJsContentGate, reducedMotionGate } from "./motion.ts";
@@ -36,7 +41,6 @@ import { serveStatic } from "./serve.ts";
 import type { StaticServer } from "./serve.ts";
 import { crawl, htmlPages, normalizeBase } from "./site.ts";
 import type { Site } from "./site.ts";
-import { greenhouseHome } from "./lock.ts";
 import { webkitIphoneGate } from "./webkit.ts";
 
 const require = createRequire(import.meta.url);
@@ -62,6 +66,17 @@ export interface CheckOptions {
   evidenceDir?: string;
   /** Progress lines (default: none). */
   log?: (line: string) => void;
+  /** Run the assisted gates too (issue #12): two judges from different model families. */
+  assisted?: AssistedOptions;
+}
+
+export interface AssistedOptions {
+  judges: Judge[];
+  /** Where claim sources are archived; default <round-dir>/sources, else ~/.greenhouse/archive/<slug>-<sha12>. */
+  archiveDir?: string;
+  claims?: Omit<ClaimsOptions, "archiveDir">;
+  sweep?: SweepOptions;
+  hiddenText?: HiddenTextOptions;
 }
 
 export class CheckUsageError extends Error {
@@ -157,7 +172,7 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
   const gates: Gate[] = [];
   const push = (g: Gate) => {
     gates.push(g);
-    log(`${g.status.toUpperCase().padEnd(4)} ${g.id.padEnd(17)} ${g.summary}`);
+    log(`${g.status.toUpperCase().padEnd(4)} ${g.id.padEnd(20)} ${g.summary}`);
   };
   const dirty = git(["status", "--porcelain"], repo);
   if (!opts.sha && !submission && dirty.ok && dirty.out) log(`note: ${opts.repo} has uncommitted changes; check builds the committed sha ${sha.slice(0, 12)}`);
@@ -201,26 +216,39 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     push(placeholderGate(site, why));
     push(noindexGate(site, why));
     push(specSamplesGate(build.checkoutDir, site, why));
+    let browserWhy = why;
+    const startBrowser = async (): Promise<Browser | null> => {
+      if (!site) return null;
+      const avail = await browserAvailable();
+      if (!avail.ok) {
+        browserWhy = `browser unavailable: ${avail.reason}`;
+        return null;
+      }
+      try {
+        return await launchBrowser();
+      } catch (e) {
+        browserWhy = `browser did not start: ${(e as Error).message.split("\n")[0]}`;
+        return null;
+      }
+    };
+    browser = await startBrowser();
+
     const sib = readSiblings(opts.siblings ?? [], slug);
-    push(templateLikenessGate(site, why, sib.siblings, sib.errors));
+    let visual: VisualInput = { self: null, template: null, error: browserWhy };
+    if (browser && base) {
+      try {
+        visual = { self: await visualSignature(browser, base), template: await templateVisual(browser) };
+      } catch (e) {
+        visual = { self: null, template: null, error: `screenshot failed: ${(e as Error).message.split("\n")[0]}` };
+      }
+    }
+    push(templateLikenessGate(site, why, sib.siblings, sib.errors, undefined, visual));
 
     const corpus: CorpusFile[] = scanCorpus(build.checkoutDir, build.outputDir);
     if (url && site) for (const p of site.pages.values()) if (p.body) corpus.push({ name: `deployed:${p.path}`, text: p.body });
     push(secretsGate(corpus));
     push(canaryGate(canaries, corpus, canaryError));
     push(await assetCacheGate(site, why));
-
-    let browserWhy = why;
-    if (site) {
-      const avail = await browserAvailable();
-      if (avail.ok) {
-        try {
-          browser = await launchBrowser();
-        } catch (e) {
-          browserWhy = `browser did not start: ${(e as Error).message.split("\n")[0]}`;
-        }
-      } else browserWhy = `browser unavailable: ${avail.reason}`;
-    }
     const paths = site ? htmlPages(site).map((p) => p.path) : [];
     push(await axeGate(browser, site ? base : null, paths, browserWhy));
     push(await signupGate(browser, site ? base : null, browserWhy, 12, signupStart(content)));
@@ -242,6 +270,31 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
         site ? `browser unavailable: ${(lhAvail as { reason?: string }).reason ?? "unknown"}` : why,
       ),
     );
+
+    if (opts.assisted) {
+      const a = opts.assisted;
+      log("assisted gates: two judges on what the mechanics cannot settle…");
+      browser = await startBrowser();
+      const ht = await hiddenTextGate(browser, site, start.routes, a.judges, a.hiddenText, site ? browserWhy : why);
+      const archiveDir = a.archiveDir ?? (opts.roundDir ? join(opts.roundDir, "sources") : join(greenhouseHome(), "archive", `${slug}-${sha.slice(0, 12)}`));
+      push(
+        await claimsGate(build.checkoutDir, a.judges, {
+          now: new Date(started_at),
+          renderer: browser ? browserRenderer(browser) : null,
+          ...a.claims,
+          archiveDir,
+        }),
+      );
+      push(await claimSweepGate(site, build.checkoutDir, a.judges, a.sweep, why));
+      push(await pricingGate(site, build.checkoutDir, content, a.judges, why));
+      push(await socialProofGate(site, build.checkoutDir, a.judges, why));
+      push(await reviewerInstructionGate(site, a.judges, ht.hidden, why));
+      push(ht.gate);
+      if (browser) {
+        await browser.close().catch(() => undefined);
+        browser = null;
+      }
+    }
 
     const checks: Checks = {
       schema_version: 1,

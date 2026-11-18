@@ -15,7 +15,7 @@ possible layout, not a structure to copy. How the site is judged is in
 | `STATE.md` | yes | Decisions, open findings, next steps, spend. Kept current by the Chief. |
 | `claims.yaml` | yes | Every public factual claim (schema: `schemas/claims.schema.json`). |
 | `spec/openapi.yaml` (or `spec/interface.md` for non-HTTP products) | yes | The build spec docs samples are checked against. |
-| `greenhouse.yaml` | yes | `slug`, `build.command`, `build.output`, `production_branch: main`, and the `content:` map below. |
+| `greenhouse.yaml` | yes | `slug`, `build.command`, `build.output`, `production_branch: main`, the `content:` map and the `cost_model:` below. |
 
 ## Fixed routes
 
@@ -59,6 +59,31 @@ content:            # each value: a site path, optionally with #anchor
 - The checks crawl from `/` plus these paths; every page reached that way is checked.
 - The example values above are just that. Choose names and a structure that fit the product's story.
   The owner's examples (pricing, docs, compare) are content to cover, not the nav or the skeleton.
+
+## Cost model: `cost_model:` in `greenhouse.yaml`
+
+The `pricing` assisted gate reconciles the pricing content with the project's cost model, declared
+next to the content map:
+
+```yaml
+cost_model:
+  currency: USD        # 3-letter code (default USD)
+  period: month        # month or year (default month)
+  self_host: true      # the pricing content must show the self-hosting path
+  tiers:               # every tier on the pricing content, in order
+    - name: Community
+      price: 0         # per period; null for "contact us"
+      cost_to_serve: 0 # what one customer on this tier costs you per period
+      includes: Self-hosted, everything in the open-source edition.   # optional, for the judges
+    - name: Starter
+      price: 49
+      cost_to_serve: 11
+```
+
+Every tier's name and price must appear in the `content.pricing` section (only inside its
+`#anchor` when it has one), no paid tier may sell below its `cost_to_serve`, and both judges must
+find no contradiction between the pricing text and the cost model. Amounts on the pricing content
+that match no tier are listed for the judges and the panel.
 
 ## Rules checked by gates
 
@@ -123,3 +148,32 @@ these deterministic gates and writes `checks.json` (`schemas/checks.schema.json`
 Without `--url` the clean build is served locally the way Pages serves it (`_headers` included).
 Tool versions (Node, Playwright and its Chromium and WebKit, axe-core, Lighthouse) are pinned in
 `package-lock.json` and recorded in `checks.json`.
+
+## Assisted gates: `greenhouse check --assisted`
+
+`greenhouse check --assisted --judge <id>=<family>:<command> --judge <id>=<family>:<command>
+[--archive-dir <dir>]` adds six assisted gates (`class: "assisted"` in `checks.json`) after the
+deterministic ones. Each does a mechanical proof first and asks two model judges from different
+families only what the mechanics cannot settle. A judge is a command that reads a request
+(`{"schema": "greenhouse-judge-request/1", "task", "question", "material"}`) on stdin and writes
+`{"answer": "yes" | "no" | "unclear", "reason": "..."}` on stdout; the judge runner supplies the
+model adapters, and the tests use stub judges, so this repository makes no model calls.
+
+A problem the mechanics prove fails on its own. A candidate only the judges can settle fails when
+both judges agree it is a problem and warns when they split (disagree, `unclear` or an error), so
+the panel sees it. A claim passes only when both judges say its quote supports it.
+
+| Gate | Mechanical proof | Judges | Cap on failure |
+|---|---|---|---|
+| `claims` | Every `source_url` fetched with a browser User-Agent (429 retried once) and archived under `--archive-dir` (default `<round-dir>/sources/`, else `~/.greenhouse/archive/<slug>-<sha12>/`: one file per body, named by its sha256, plus `index.json`). The `quote` must be in the source verbatim (up to whitespace, quote marks, dashes and case; `...` marks an omission); pages that need JavaScript are rendered in the browser. | Does the quote support the claim exactly as written? | `unsupported_claim` (7.0) |
+| `claim-sweep` | Sentences on every page with a figure, a comparison, a superlative or research, not covered by a ledger claim. | Is this a claim about the outside world that needs a public source? | failed gate (7.0) |
+| `pricing` | Tiers, prices, cost to serve and the self-hosting path against `cost_model:` (above). | Does the pricing text contradict the cost model? | failed gate (7.0) |
+| `social-proof` | Testimonials, attributions, logo walls, customer counts, ratings and press mentions not backed by the ledger. | Is this presented as real social proof for this product? | `invented_social_proof` (5.0) |
+| `reviewer-instruction` | Pages, `/llms.txt`, `/robots.txt` and similar files: instructions to models or reviewers in comments, attributes, scripts or hidden text fail outright; the same words in visible text, or text that mentions reviewers or models, go to the judges. | Is this addressed to an AI reviewer or judge rather than to visitors? | `reviewer_instruction` (5.0) |
+| `hidden-text` | Start pages fetched as a browser and as Googlebot, GPTBot and ClaudeBot: different content fails (cloaking). In the browser, text laid out but invisible (off-screen, clipped, tiny or same colour as its background); clipped or off-screen labels up to 80 characters are screen-reader text and allowed. | Is this hidden text there for machines rather than people? | failed gate (7.0) |
+
+`template-likeness` also measures the home page's first screen (1440x900, reduced motion) against
+`template/` and the `--sibling` projects: the mean of a 64-bin colour-histogram intersection and a
+32x20 luminance-grid correlation. It is panel evidence and warns at 0.9 or more; the gate still
+fails only on structural near-identity to `template/`. Without a browser it records why it has no
+visual measure.

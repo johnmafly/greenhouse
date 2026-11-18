@@ -73,7 +73,7 @@ export function readClaimUrls(dir: string): { refs: ClaimRef[]; error?: string }
   return { refs };
 }
 
-function errorLabel(e: unknown): string {
+export function errorLabel(e: unknown): string {
   const err = e as { name?: string; message?: string; cause?: { code?: string; message?: string } };
   if (err?.name === "TimeoutError" || err?.name === "AbortError") return "timeout";
   const code = err?.cause?.code;
@@ -125,7 +125,7 @@ export async function probeUrl(url: string, opts: ClaimLinkOptions = {}): Promis
   return { status, method: "GET" };
 }
 
-function fresh(checked: unknown, now: Date): boolean {
+export function fresh(checked: unknown, now: Date): boolean {
   const s = checked instanceof Date ? checked.toISOString().slice(0, 10) : typeof checked === "string" ? checked : "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const t = Date.parse(`${s}T00:00:00Z`);
@@ -136,7 +136,7 @@ function fresh(checked: unknown, now: Date): boolean {
   return days >= -1 && days <= MAX_CHECKED_AGE_DAYS;
 }
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
   const worker = async () => {
