@@ -1,0 +1,100 @@
+# BotRampart intake (schema: schemas/intake.schema.json, issue #4).
+# Source of truth: the founder's architecture plan (16 Nov 2026, 180 sources) and market
+# analysis (15 Nov 2026), both prepared by the BotRampart Reason. The owner approved using the
+# architecture plan as the intake (decision 0000-4). Values marked "proposal" are VC Joe's
+# proposals that the owner has not yet confirmed.
+schema_version: 1
+slug: botrampart
+name: BotRampart
+status: seed
+chief:
+  reason_id: 8027c802-a97a-4838-9ac2-9b7dbac2390d
+  name: BotRampart
+repo: johnmafly/botrampart-site
+deployment_url: https://botrampart.agenthatch.ai
+
+intent: >-
+  An open-source, self-hosted bot defense that never decides "bot or human". A browser SDK
+  solves an invisible proof-of-work and collects a few interaction signals; a backend SDK in the
+  customer's app server issues a signed session cookie, verifies it offline on every request,
+  charges each request against the session's budget by path cost ("request economics") and
+  applies the customer's policy rules, with no proxy in the request path. Every 5 minutes Core
+  turns the last window into a bucketed state, asks a decision model typed questions, caches the
+  answer for up to an hour and exposes it as fields policy rules can reference. Everything is
+  written to the customer's own object storage, and an agent with read-only DuckDB access
+  explains any decision in Slack, email or the console and proposes policy changes a person
+  approves. Positioned on control, not on beating Cloudflare: runs in your infrastructure, your
+  data never leaves, open source, explains itself.
+
+buyer: >-
+  Revenue core: mid-market SaaS, e-commerce, marketplaces, travel and ticketing sites with 5M to
+  200M requests a month, engineering-led, living in Slack, with no dedicated security team, facing
+  scraping, fake signups and credential stuffing, priced out by DataDome or Cloudflare Enterprise
+  (paying gap between about $250 and $3,830 a month). High value: regulated and data-sovereign
+  buyers (fintech, health, government suppliers, EU firms with residency rules, private-network
+  apps that cannot sit behind a CDN). Regional: APAC mid-market. Self-hosters and the
+  open-source community are the distribution channel, not the revenue base.
+
+open_source_model: >-
+  Open core. Browser and backend SDKs, CLI and log pack under Apache-2.0; Core, agent and console
+  under AGPL-3.0 with a commercial licence on request (Apache-2.0 throughout is the open
+  alternative, founder's open question 3); registered trademark; contributor agreement allowing
+  relicensing. Editions: Community (free, everything in the plan, "Protected by BotRampart" on
+  challenge pages); White-label (mark removed, about $49 a month per organisation);
+  Enterprise self-hosted (SSO, roles and audit export, HA Core, support, commercial licence,
+  about $799 a month and up); Cloud (hosted Core and agent, fixed fee plus protected sessions:
+  Free $0 / 10,000 sessions, Starter $49 / 100,000, Growth $249 / 1,000,000, Scale $999 /
+  10,000,000, a proposal to test). The community edition must build with the commercial
+  directory deleted, and no shipped feature is ever taken back.
+
+# From the architecture plan's assessment of the founder's fourteen choices (section 2) and its
+# design. Each is fixed for the package; the Chief does not change them without owner feedback.
+locked_assumptions:
+  - Price, not verdict. BotRampart never labels a client a bot; each session has a budget, each path a cost, and a passed challenge buys a bounded, shrinking credit, never a clearance.
+  - Identity is a server-set HttpOnly session cookie (rotated every 15 to 45 minutes, softly bound) plus an optional customer login ID; no fingerprint ID.
+  - IP is not the identity. Network level counts only through mint buckets (IP, /24 or /48, ASN, TLS fingerprint) compared with that network's own baseline; the response is a harder puzzle, not a block, and signed-in sessions are exempt.
+  - Tiered challenges. Tier 0 provisional, tier 1 memory-hard adaptive proof-of-work, tier 2 human check, tier 3 a pluggable step-up with a non-visual alternative; the image CAPTCHA is one tier 3 option, not the fixed top tier.
+  - Enforcement with SDKs only. "No proxy", not "no middleware". Tokens are verified offline in the app server, the fail mode is set per route, and the CDN or WAF keeps handling floods.
+  - Request economics is the core. Weighted token bucket per session by path cost, with a mint bucket and an account ceiling against minting more sessions.
+  - The decision model governs and is never inline. It works on a 5-minute bucketed state, receives only closed enums with numbers bucketed in code, answers typed questions, is cached on the state hash for up to an hour with tripwires forcing an early re-ask, and sits behind one provider interface (Gemini Decision 1 or a self-hosted model).
+  - No warehouse and no ClickHouse. Metrics and the decision log go to S3-compatible object storage (R2, S3, MinIO) as Parquet, read with DuckDB; per-session counters come from the backend SDK.
+  - No autopilot. Policy is a file of rules with good defaults; the model's answer is exposed as ai.* fields that rules reference; rules are simulated before publishing.
+  - The agent explains every decision from the decision log by reference ID, uses named queries before free SQL, has read-only credentials, and a person approves every policy change.
+  - Hosting is Cloudflare first, portable to AWS or Azure through OpenOrange using only bindings it marks drop-in, behind a thin ports layer, with plain Node adapters as a second exit.
+  - No Helm app. Ship containers plus SDKs with one generator (npx botrampart init) and observe mode first.
+  - Cloud billing is a fixed fee plus protected sessions (a session that passed tier 1, counted once a month); failed and blocked traffic is never billed; "bots mitigated" is shown as a value metric, not the unit.
+  - Go to market through an open benchmark of bot defenses on BotRampart's own origins (open harness, vendor terms respected, right of reply, false-positive rate beside block rate), not through ads.
+
+# From the architecture plan's MVP cut (section 17): not in the first build, so the package
+# must not present them as available.
+non_goals:
+  - Vector log pack (SDK counters are enough to start).
+  - Tier 3 step-up methods and third-party challenge widgets.
+  - A console beyond a read-only view; policy lives in a file.
+  - Free-form SQL, policy proposals and email from the agent.
+  - Python, Java and other SDKs (Node only).
+  - Cloud billing, the white-label build and single sign-on.
+  - A published benchmark site (the harness exists, unpublished).
+  - Edge adapters, mobile SDKs and Web Bot Auth.
+  - Mobile apps and partner APIs as protected clients.
+  - The decision model acting live (it runs in shadow mode).
+
+budget:
+  rounds: 6
+  model_spend_usd: 150   # proposal, awaiting owner approval
+  time_cap_days: 21      # proposal, awaiting owner approval (plan v7 pilot window, weeks 2 to 4)
+
+exposure:
+  public: true           # owner decision 0000-1
+  indexable: false       # X-Robots-Tag and meta noindex until the owner publishes
+  real_signups: false    # the mock signup stores nothing
+  outreach: false
+
+sources:
+  - https://reasonmachines.com/agents/2f892d45-d078-43cd-905a-cbb3a478f22a?page=967a404c-bbd1-4987-9a3e-551f91fb67a8
+  - https://reasonmachines.com/agents/2f892d45-d078-43cd-905a-cbb3a478f22a?page=0361298c-8eef-428b-b7e3-d2c8aa01fcf9
+
+# 2026-11-18: owner said use the architecture plan as intake ("the first project I would like to
+# start is BotRampart ... use it as intake"). The two budget proposals above still need the
+# owner's yes.
+approved_by_owner: "2026-11-18"
