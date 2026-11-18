@@ -50,8 +50,10 @@ describe("submission.yaml", () => {
     assert.match(validateSubmission({ ...sub, extra: 1 }).errors.join(), /unknown property 'extra'/);
     const { changelog: _c, ...noChangelog } = sub;
     assert.match(validateSubmission(noChangelog).errors.join(), /changelog/);
-    assert.throws(() => parseSubmissionYaml("slug:\n  nested: 1\n"));
-    assert.throws(() => parseSubmissionYaml("changelog: |\n  block\n"));
+    assert.match(validateSubmission({ ...sub, slug: { nested: 1 } }).errors.join(), /slug/);
+    assert.throws(() => parseSubmissionYaml("- a list\n"));
+    assert.throws(() => parseSubmissionYaml("slug: [unclosed\n"));
+    assert.equal(parseSubmissionYaml("changelog: |\n  block\n").changelog, "block\n");
   });
 });
 

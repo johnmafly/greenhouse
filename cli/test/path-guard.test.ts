@@ -72,7 +72,8 @@ describe("path-guard", () => {
     assert.match(guard("submission: demo round 03", [added(P)], yaml({ round: 4 })).errors.join(), /round 4 does not match/);
     assert.match(guard("submission: demo round 03", [added(P)], yaml({ slug: "other" })).errors.join(), /slug 'other' does not match/);
     assert.match(guard("submission: demo round 03", [added(P)], yaml({ sha: "short" })).errors.join(), /\/sha/);
-    assert.match(guard("submission: demo round 03", [added(P)], "nested:\n  x: 1\n").errors.join(), /line 1/);
+    assert.match(guard("submission: demo round 03", [added(P)], "nested:\n  x: 1\n").errors.join(), /unknown property 'nested'/);
+    assert.equal(guard("submission: demo round 03", [added(P)], "slug: [unclosed\n").ok, false, "invalid YAML fails");
     assert.match(guard("submission: demo round 03", [added(P)], null).errors.join(), /content not available/);
   });
 

@@ -25,6 +25,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      # The guard validates submission.yaml with the schema library (ajv, yaml). Installs the BASE
+      # branch's locked dependencies, with install scripts disabled.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check changed paths
         env:
           GITHUB_TOKEN: ${{ github.token }}

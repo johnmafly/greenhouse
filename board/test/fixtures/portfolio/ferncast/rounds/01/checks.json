@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "slug": "ferncast",
+  "round": 1,
+  "sha": "28c67f1a74840cc89767002660af305efa1e882b",
+  "deployment_url": "https://ferncast.agenthatch.ai",
+  "cli_version": "0.1.0",
+  "tool_versions": {
+    "node": "24.11.0",
+    "playwright": "1.65.1"
+  },
+  "machine": "agenthatchminisg",
+  "started_at": "2026-11-15T09:00:00Z",
+  "finished_at": "2026-11-15T09:40:00Z",
+  "gates": [
+    {
+      "id": "build",
+      "class": "deterministic",
+      "status": "pass",
+      "summary": "Clean-checkout build succeeded"
+    },
+    {
+      "id": "links",
+      "class": "deterministic",
+      "status": "fail",
+      "summary": "3 broken internal links under /docs/"
+    },
+    {
+      "id": "claims",
+      "class": "assisted",
+      "status": "pass",
+      "summary": "All 9 ledger claims supported"
+    }
+  ],
+  "all_green": false,
+  "bundle_hash": "9b25201b3d1b04c9c49443ae6fea8ffc94f43123104c5c870c2af54a29140ef5"
+}
