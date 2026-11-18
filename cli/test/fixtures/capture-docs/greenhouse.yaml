@@ -1,0 +1,30 @@
+# Fixture: a docs: block (decision 0006) beside the content map. docs.architecture and
+# docs.quickstart/integrations share pages with the content map; faq shares features' page
+# through an anchor; domain_reference is a list.
+slug: capture-docs-fixture
+build:
+  command: npm run build
+  output: dist
+production_branch: main
+content:
+  how_it_works: /how-it-works/
+  getting_started: /docs/start/
+  architecture: /docs/architecture/
+  integration: /docs/start/#integrate
+  comparison: /vs/
+  pricing: /#plans
+  signup: /try/
+docs:
+  overview: /docs/
+  architecture: /docs/architecture/
+  features: /docs/features/
+  quickstart: /docs/start/#install
+  configuration: /docs/configuration/
+  integrations: /docs/start/#integrate
+  api_reference: /docs/api/
+  sdk_reference: /docs/sdk/
+  domain_reference: [/docs/policy/, /docs/cohorts/#model]
+  self_hosting: /docs/self-hosting/
+  security: /docs/security/
+  faq: /docs/features/#faq
+  changelog: /docs/changelog/

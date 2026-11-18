@@ -17,6 +17,8 @@ import { parseR2Target, uploadBundle } from "./capture-r2.ts";
 import { loadContentMap, routesFromContentMap, stripAnchor, type ContentMap, type ContentServe } from "./capture-routes.ts";
 import { DEFAULT_MOTION_TIMING, captureMotion, motionTargets, type MotionEntry, type MotionTiming } from "./capture-motion.ts";
 import { collectWebkitEvidence, type WebkitEvidence, type WebkitSource } from "./capture-webkit.ts";
+import { DOCS_DIR, markdownAlternateInPage, parseDocsMap, planDocs, saveLlmsTxt, saveMarkdownAlternate, type DocsMap, type DocsServe, type LlmsTxt, type MarkdownResult } from "./capture-docs.ts";
+import { DOCS_KEYS } from "./check/docs.ts";
 
 /**
  * Contract v1 routes. Used when the project declares no content map (greenhouse.yaml
@@ -42,7 +44,10 @@ export const VIEWPORTS = {
 const WELL_KNOWN = "/.well-known/greenhouse.json";
 // 2: pages[].content, route_source, content_map, motion[] (design bar v2).
 // 3: webkit_iphone (greenhouse check's WebKit iPhone screenshots, copied into webkit-iphone/).
-const MANIFEST_SCHEMA_VERSION = 3;
+// 4: docs (the user guide named by greenhouse.yaml's docs: block, frozen into docs/), and
+//    pages[].docs / files.markdown / markdown_alternate on pages that are also guide pages.
+//    Without a docs: block a v4 manifest has the same fields as v3.
+export const MANIFEST_SCHEMA_VERSION = 4;
 
 const USAGE = `greenhouse capture --url <deployment> --out <bundle dir> [options]
 greenhouse capture --verify <bundle dir>
@@ -51,8 +56,8 @@ Freeze an evidence bundle: full-page screenshots of every route at desktop (1440
 and mobile (390x844), the visible text of each page, motion evidence for the home page
 and the signup start (scroll video webm and 12-frame strip PNG at desktop and phone, plus
 a reduced-motion strip of the home page), greenhouse check's WebKit iPhone screenshots when
---round-dir or --evidence-dir names them, and manifest.json with the sha256 of every file
-and a bundle hash.
+--round-dir or --evidence-dir names them, the user guide when greenhouse.yaml has a docs:
+block, and manifest.json with the sha256 of every file and a bundle hash.
 
 Options:
   --url <url>            Deployment base URL (required)
@@ -64,6 +69,14 @@ Options:
                          motion uses content.signup as the signup start. Without this option,
                          or when the file has no content: map, the contract v1 routes are
                          captured and /signup/ is the signup start. A malformed map is an error.
+                         With a docs: block (decision 0006), every distinct guide path (lists
+                         flattened, anchors dropped) not already captured as a route is frozen in
+                         docs/<NN>-<section>/: text.txt (visible text, as for pages), desktop.png
+                         (full page, desktop only) and page.md (the page's same-origin
+                         <link rel="alternate" type="text/markdown">, when it has one). A guide path
+                         that is also a route keeps its pages/ files, gains pages/<name>/page.md and
+                         lists its sections in pages[].docs. /llms.txt is saved as docs/llms.txt
+                         when served. manifest.json's docs records section -> paths -> files.
   --routes <a,b,...>     Routes to capture instead (not with --greenhouse-yaml)
   --round-dir <dir>      The round dir \`greenhouse check --round-dir\` wrote: its WebKit iPhone 15 Pro
                          fold screenshots (<dir>/evidence/webkit-iphone/*.png) are copied into the
@@ -183,12 +196,44 @@ type PageRecord = {
   final_url: string;
   status: number | null;
   title: string;
-  files: { desktop: string; mobile: string; text: string };
+  /** markdown only on a guide page (docs: block): its saved Markdown alternate, or null. */
+  files: { desktop: string; mobile: string; text: string; markdown?: string | null };
   /** Content keys this page serves (target keeps the #anchor); null without a content map. */
   content: ContentServe[] | null;
+  /** Docs sections this page serves; only present when the docs: block names this route. */
+  docs?: DocsServe[];
+  /** The page's Markdown alternate; only present with docs. */
+  markdown_alternate?: MarkdownResult;
   hidden_text_chars: number;
   /** CSS width the page laid out at on the phone; above 390 means it lacks a mobile viewport. */
   mobile_layout_width: number | null;
+};
+
+/** A guide page capture visited for the docs: block (not already a route), under docs/<NN>-<key>/. */
+type DocsPageRecord = {
+  path: string;
+  url: string;
+  final_url: string;
+  status: number | null;
+  title: string;
+  docs: DocsServe[];
+  files: { desktop: string; text: string; markdown: string | null };
+  markdown_alternate: MarkdownResult;
+  hidden_text_chars: number;
+};
+
+type DocsFiles = { text: string; desktop: string; markdown: string | null };
+
+/** manifest.docs: the docs: block and where each section's pages are in the bundle. */
+type DocsEvidence = {
+  source: "greenhouse.yaml docs:";
+  /** Problems with the docs: block (missing or unknown sections, bad paths); valid entries are still captured. */
+  errors: string[];
+  /** Section key -> its paths (as written, #anchor kept) -> the bundle files holding that page. */
+  sections: Record<string, { target: string; path: string; files: DocsFiles }[]>;
+  /** The guide pages visited for the docs: block (not already routes), in visit order. */
+  pages: DocsPageRecord[];
+  llms_txt: LlmsTxt;
 };
 
 function accessHeaders(env: NodeJS.ProcessEnv): Record<string, string> {
@@ -219,6 +264,8 @@ export type CaptureOptions = {
   routes?: string[];
   /** greenhouse.yaml content map (contract v2); routes and the signup start come from it. */
   contentMap?: ContentMap | null;
+  /** greenhouse.yaml docs: block (decision 0006); its guide pages are frozen into docs/. */
+  docsMap?: DocsMap | null;
   /** Where greenhouse check saved its webkit-iphone screenshots; none copied without it. */
   webkit?: WebkitSource | null;
   /** Motion evidence timing overrides, or false to skip motion (tests only). */
@@ -239,6 +286,8 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
   const routes = fromMap?.routes ?? opts.routes ?? CONTRACT_ROUTES;
   const routeSource = fromMap ? "content_map" : opts.routes ? "routes_option" : "contract_v1_fallback";
   const signupStart = opts.contentMap ? stripAnchor(opts.contentMap.signup) || "/" : "/signup/";
+  const timeoutMs = opts.timeoutMs ?? 45_000;
+  const docsPlan = opts.docsMap?.present ? planDocs(opts.docsMap, routes) : null;
   const out = resolve(opts.out);
   await assertUsableOut(out);
   const tmp = `${out}.partial-${process.pid}`;
@@ -258,7 +307,7 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
 
     // Deployment identity (/.well-known/greenhouse.json), recorded when present.
     let deployment: unknown = null;
-    const wk = await contexts.desktop.request.get(new URL(WELL_KNOWN, base).toString(), { timeout: opts.timeoutMs ?? 45_000 }).catch(() => null);
+    const wk = await contexts.desktop.request.get(new URL(WELL_KNOWN, base).toString(), { timeout: timeoutMs }).catch(() => null);
     if (wk && wk.ok()) {
       const body = await wk.body();
       try {
@@ -279,7 +328,7 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
       for (const vp of ["desktop", "mobile"] as const) {
         const page = await contexts[vp].newPage();
         try {
-          const resp = await page.goto(url, { waitUntil: "load", timeout: opts.timeoutMs ?? 45_000 });
+          const resp = await page.goto(url, { waitUntil: "load", timeout: timeoutMs });
           await settle(page);
           await page.screenshot({ path: join(tmp, rec.files[vp]), fullPage: true, animations: "disabled", caret: "hide" });
           if (vp === "desktop") {
@@ -289,6 +338,13 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
             const { text, hidden_chars } = await page.evaluate(extractVisibleText);
             rec.hidden_text_chars = hidden_chars;
             await writeFile(join(tmp, rec.files.text), text);
+            const docsServed = docsPlan?.shared.get(route);
+            if (docsServed) {
+              rec.docs = docsServed;
+              const md = await saveMarkdownAlternate(await page.evaluate(markdownAlternateInPage), base, contexts.desktop.request, tmp, `pages/${name}/page.md`, timeoutMs);
+              rec.files.markdown = md.file;
+              rec.markdown_alternate = md;
+            }
           } else {
             rec.mobile_layout_width = await page.evaluate(() => document.documentElement.clientWidth);
           }
@@ -300,6 +356,49 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
       }
       log(`captured ${route} -> HTTP ${rec.status}${rec.status !== null && rec.status >= 400 ? " (recorded, not an error)" : ""}`);
       pages.push(rec);
+    }
+
+    let docs: DocsEvidence | undefined;
+    if (docsPlan && opts.docsMap) {
+      for (const e of opts.docsMap.errors) log(`docs: ${e}`);
+      const docsPages: DocsPageRecord[] = [];
+      for (const t of docsPlan.targets) {
+        const dir = `${DOCS_DIR}/${t.name}`;
+        await mkdir(join(tmp, dir), { recursive: true });
+        const url = new URL(t.path, base).toString();
+        const rec: DocsPageRecord = { path: t.path, url, final_url: url, status: null, title: "", docs: t.serves, files: { desktop: `${dir}/desktop.png`, text: `${dir}/text.txt`, markdown: null }, markdown_alternate: { url: null, status: null, file: null, note: null }, hidden_text_chars: 0 };
+        const page = await contexts.desktop.newPage();
+        try {
+          const resp = await page.goto(url, { waitUntil: "load", timeout: timeoutMs });
+          await settle(page);
+          await page.screenshot({ path: join(tmp, rec.files.desktop), fullPage: true, animations: "disabled", caret: "hide" });
+          rec.status = resp?.status() ?? null;
+          rec.final_url = page.url();
+          rec.title = await page.title();
+          const { text, hidden_chars } = await page.evaluate(extractVisibleText);
+          rec.hidden_text_chars = hidden_chars;
+          await writeFile(join(tmp, rec.files.text), text);
+          rec.markdown_alternate = await saveMarkdownAlternate(await page.evaluate(markdownAlternateInPage), base, contexts.desktop.request, tmp, `${dir}/page.md`, timeoutMs);
+          rec.files.markdown = rec.markdown_alternate.file;
+        } catch (e) {
+          throw new Error(`capture of docs page ${url} failed: ${(e as Error).message.split("\n")[0]}`);
+        } finally {
+          await page.close();
+        }
+        log(`captured docs ${t.path} (${t.serves.map((s) => s.key).join(", ")}) -> HTTP ${rec.status}${rec.files.markdown ? ", Markdown saved" : rec.markdown_alternate.note ? `, Markdown not saved: ${rec.markdown_alternate.note}` : ", no Markdown alternate linked"}`);
+        docsPages.push(rec);
+      }
+      const filesFor = new Map<string, DocsFiles>();
+      for (const p of docsPages) filesFor.set(p.path, p.files);
+      for (const p of pages) if (p.docs) filesFor.set(p.route, { text: p.files.text, desktop: p.files.desktop, markdown: p.files.markdown ?? null });
+      const sections: DocsEvidence["sections"] = {};
+      for (const key of DOCS_KEYS) {
+        const refs = opts.docsMap.sections.get(key);
+        if (refs) sections[key] = refs.map((r) => ({ target: r.raw, path: r.path, files: filesFor.get(r.path)! }));
+      }
+      const llms = await saveLlmsTxt(base, contexts.desktop.request, tmp, timeoutMs);
+      log(`docs: ${docsPages.length} guide page(s) captured, ${docsPlan.shared.size} shared with routes; /llms.txt ${llms.file ? "saved" : `not saved (${llms.note})`}`);
+      docs = { source: "greenhouse.yaml docs:", errors: opts.docsMap.errors, sections, pages: docsPages, llms_txt: llms };
     }
 
     let motion: MotionEntry[] = [];
@@ -335,6 +434,7 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
       motion_timing: timing,
       motion,
       webkit_iphone: webkitIphone,
+      ...(docs ? { docs } : {}),
     });
     await writeFile(join(tmp, MANIFEST_FILE), serializeManifest(manifest));
     await rm(out, { recursive: true, force: true }); // only an empty dir can exist here (assertUsableOut)
@@ -400,6 +500,7 @@ export async function main(argv: string[]): Promise<number> {
   let target;
   let routes;
   let contentMap: ContentMap | null = null;
+  let docsMap: DocsMap | null = null;
   let webkit: WebkitSource | null = null;
   try {
     target = args.r2 ? parseR2Target(args.r2) : null;
@@ -408,6 +509,8 @@ export async function main(argv: string[]): Promise<number> {
       const loaded = await loadContentMap(resolve(args["greenhouse-yaml"]));
       contentMap = loaded.map;
       if (!contentMap) process.stderr.write(`note: ${loaded.file} has no content: map; capturing the contract v1 routes\n`);
+      const docs = parseDocsMap(loaded.doc);
+      docsMap = docs.present ? docs : null;
     }
     routes = contentMap || !args.routes ? undefined : parseRoutes(args.routes);
     if (args["round-dir"] && args["evidence-dir"]) throw new Error("--round-dir and --evidence-dir are mutually exclusive");
@@ -422,7 +525,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   try {
     const out = resolve(args.out);
-    const manifest = await capture({ url: args.url, out, routes, contentMap, webkit, timeoutMs: args.timeout ? Number(args.timeout) : undefined });
+    const manifest = await capture({ url: args.url, out, routes, contentMap, docsMap, webkit, timeoutMs: args.timeout ? Number(args.timeout) : undefined });
     const summary: Record<string, unknown> = { out, bundle_hash: manifest.bundle_hash, files: manifest.files.length };
     if (target) {
       const up = await uploadBundle(out, manifest, target);
