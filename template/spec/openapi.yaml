@@ -1,0 +1,35 @@
+# Build spec. Docs code samples (<pre><code data-op="operationId">) are checked against the
+# operationIds defined here by greenhouse check (gate spec-samples).
+openapi: 3.1.0
+info:
+  title: Example Seed API
+  version: 0.1.0
+paths:
+  /v1/projects:
+    post:
+      operationId: createProject
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: Created
+  /v1/projects/{name}:
+    get:
+      operationId: getProject
+      summary: Read a project
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The project

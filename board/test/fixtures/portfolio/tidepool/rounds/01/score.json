@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "slug": "tidepool",
+  "round": 1,
+  "sha": "261d4021d5b49af1ea6318cfaf95c92fcff02b0e",
+  "rubric_version": 1,
+  "brief_version": "brief-v1",
+  "provisional": true,
+  "panel": [
+    {
+      "id": "r-gemini",
+      "model": "gemini-2.5-pro",
+      "family": "google"
+    },
+    {
+      "id": "r-grok",
+      "model": "grok-4",
+      "family": "xai"
+    },
+    {
+      "id": "r-openai",
+      "model": "gpt-5",
+      "family": "openai"
+    }
+  ],
+  "dimension_medians": {
+    "conviction": 7,
+    "docs_buildability": 7,
+    "site_craft": 7,
+    "distinctness": 7,
+    "comparison_honesty": 7,
+    "pricing_oss": 7,
+    "evidence_truth": 7,
+    "signup_value": 7
+  },
+  "reviewer_composites": {
+    "r-gemini": 7.05,
+    "r-grok": 7.2,
+    "r-openai": 7.05
+  },
+  "composite_raw": 7,
+  "caps_applied": [],
+  "composite": 7,
+  "gates_green": true,
+  "graduation_eligible": false,
+  "inputs": {
+    "checks_sha256": "e1717f88f0568645a2fa2bbf0a541c69fcfce6498cfab32e73b23159f4eb6e57",
+    "reviews_sha256": {
+      "1.json": "56846dff0eaf971ebf276c42c5b1743043d3b54891892d16b0cd4377d8eac91d",
+      "2.json": "e451d0a9aa09c16fed2e2c7adef70c94855ce2efa043757dd0f87819bb46fda8",
+      "3.json": "80f7d4305b9ec8c1c2488c7db08e9e503c2b122330c2db2879e5484eee9ba894"
+    },
+    "bundle_hash": "798ad3c477c4c9b1818ef20063272fde7c50f459d0b320574da02809367c67ce"
+  },
+  "cost_usd": 11.4,
+  "decided_at": "2026-11-10T09:40:00Z"
+}

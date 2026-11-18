@@ -1,0 +1,29 @@
+schema_version: 1
+slug: mossbank
+name: Mossbank
+status: in-review
+chief:
+  reason_id: 00000000-0000-4000-8000-0000ba000000
+  name: Mossbank Chief
+repo: johnmafly/mossbank-site
+deployment_url: https://mossbank.agenthatch.ai
+intent: "Open-source ledger for community gardens: plots, waiting lists and shared tools."
+buyer: Fixture buyer for board tests.
+open_source_model: Fixture open-core model for board tests.
+locked_assumptions:
+  - Fixture assumption one.
+  - Fixture assumption two.
+non_goals:
+  - Fixture non-goal.
+budget:
+  rounds: 6
+  model_spend_usd: 150
+  time_cap_days: 21
+exposure:
+  public: true
+  indexable: false
+  real_signups: false
+  outreach: false
+sources:
+  - https://example.com/mossbank
+approved_by_owner: "2026-11-18"

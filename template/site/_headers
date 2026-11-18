@@ -1,0 +1,7 @@
+# Public but not indexed until the owner publishes at graduation (package contract).
+/*
+  X-Robots-Tag: noindex, nofollow
+
+/.well-known/greenhouse.json
+  Cache-Control: no-cache
+  Access-Control-Allow-Origin: *

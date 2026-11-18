@@ -1,0 +1,8 @@
+schema_version: 1
+slug: ferncast
+round: 1
+repo: johnmafly/ferncast-site
+sha: 28c67f1a74840cc89767002660af305efa1e882b
+deployment_url: https://ferncast.agenthatch.ai
+claims_sha256: cda5387a9037f4b78c6c719602660489ffc1cdfca2c603754d3995fa2bdcef6e
+changelog: "First submission."
