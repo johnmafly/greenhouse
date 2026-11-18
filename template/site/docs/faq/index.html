@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Answers to common questions about Example Seed.">
+    <title>FAQ | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/faq.md">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>FAQ</h1>
+      <h2 id="do-i-need-the-sdk">Do I need the SDK?</h2>
+      <p>No. The API is plain HTTPS and JSON, described in an OpenAPI document. The SDK saves you writing the requests and error handling yourself.</p>
+      <h2 id="can-i-rename-a-project">Can I rename a project?</h2>
+      <p>No. Names are permanent so that links and logs keep resolving to the same project. Create a new project with the new name instead.</p>
+      <h2 id="what-happens-when-a-name-is-taken">What happens when a name is taken?</h2>
+      <p>The create call returns status 409 and nothing is written. Pick another name, or read the existing project if it is yours.</p>
+      <h2 id="can-i-move-from-the-hosted-registry-to-my-own-servers">Can I move from the hosted registry to my own servers?</h2>
+      <p>Yes. Export your projects, load them into your own registry and change <code>SEED_BASE_URL</code> in your clients. The API and record shape are the same.</p>
+      <h2 id="is-the-registry-open-source">Is the registry open source?</h2>
+      <p>Yes. The registry, the SDK and the OpenAPI document are all in the public repository under an open-source license.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/faq.md">This page as Markdown</a></p>
+    </main>
+  </body>
+</html>

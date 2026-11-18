@@ -31,6 +31,7 @@ import { VISUAL_WARN, templateLikenessGate, templateVisual, visualSignature, vis
 import type { VisualSignature } from "../src/check/likeness.ts";
 import { runCheck } from "../src/check/run.ts";
 import { crawl } from "../src/check/site.ts";
+import { visibleText } from "../src/check/html.ts";
 import { elementById, instructionCandidates, moneyAmounts, quoteFound, socialProofCandidates } from "../src/check/text.ts";
 import { TEMPLATE, edit, serveSite, templateRepo, tmp } from "./check-helpers.ts";
 
@@ -94,6 +95,11 @@ test("text: verbatim quotes, sections by id, money, social proof and instruction
   assert.ok(quoteFound("<p>Bots made up “51%” of traffic — a record.</p>", '"51%" of traffic - a record'));
   assert.ok(quoteFound("Bots made up 51% of all traffic in 2024, a record.", "Bots made up 51% ... in 2024"));
   assert.ok(!quoteFound("Bots made up 49% of all traffic.", "Bots made up 51%"));
+  // CNIL FAQ (BotRampart claim cnil-antibot): <strong>…utilisateurs</strong>, le … <strong>n’est pas nécessaire</strong>.
+  const cnil = visibleText("<p>Ainsi : <strong>Lorsque ces solutions ont pour seule finalité la sécurisation du site ou d’un mécanisme d’authentification au bénéfice des utilisateurs</strong>, le consentement des utilisateurs <strong>n’est pas nécessaire</strong>. Concernant</p>");
+  assert.ok(quoteFound(cnil, "Lorsque ces solutions ont pour seule finalité la sécurisation du site ou d’un mécanisme d’authentification au bénéfice des utilisateurs, le consentement des utilisateurs n’est pas nécessaire."));
+  assert.ok(quoteFound("Le consentement n’est pas nécessaire ( voir la question 9 ) .", "n'est pas nécessaire (voir la question 9)."));
+  assert.ok(!quoteFound(cnil, "le consentement des utilisateurs est nécessaire."));
   const html = `<main><section id="plans"><h2>Plans</h2><div><p>$20</p></div></section><p>$99 elsewhere</p><h2 id="faq">FAQ</h2><p>a</p><h2>Next</h2></main>`;
   assert.match(elementById(html, "plans") ?? "", /\$20/);
   assert.doesNotMatch(elementById(html, "plans") ?? "", /\$99/);

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Run the Example Seed registry on your own servers.">
+    <title>Self-hosting and operations | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/self-hosting.md">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>Self-hosting and operations</h1>
+      <p>The registry is open source and runs anywhere you can run a container and a PostgreSQL database. The self-hosted registry has the same API as the hosted one, so clients only change their base URL.</p>
+      <h2 id="requirements">Requirements</h2>
+      <p>You need a container runtime, PostgreSQL 15 or newer and a TLS-terminating proxy or load balancer in front of the service. The registry itself uses little memory and no local disk.</p>
+      <h2 id="install">Install</h2>
+      <p>Run the registry image with <code>DATABASE_URL</code> set to your database. On first start it creates its table and index, then listens on <code>PORT</code>. Point your load balancer at it and set <code>SEED_BASE_URL</code> in your clients to the new address.</p>
+      <h2 id="upgrades">Upgrades</h2>
+      <p>Each release notes any database change in the changelog. The registry applies changes at startup, and releases keep reading the previous schema, so a rolling upgrade works without downtime.</p>
+      <h2 id="backups-and-monitoring">Backups and monitoring</h2>
+      <p>All state is in PostgreSQL, so your normal database backups cover the registry. The service exposes a health endpoint for your load balancer and logs one line per request for your log pipeline.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/self-hosting.md">This page as Markdown</a></p>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="How Example Seed authenticates requests and protects project data.">
+    <title>Security model | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/security.md">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>Security model</h1>
+      <p>Example Seed stores project names and owners, not secrets, but it still treats every request as untrusted. This page describes what the registry protects, how and where the boundaries are.</p>
+      <h2 id="authentication">Authentication</h2>
+      <p>Every request carries an API key as a bearer token. The registry stores only a hash of each key, compares hashes in constant time and rejects a request without a valid key before it reads anything.</p>
+      <h2 id="authorization">Authorization</h2>
+      <p>A key belongs to one account and has scopes. A key with the projects scope can create and read that account's projects and nothing else; there is no way for a key to read another account's records.</p>
+      <h2 id="transport-and-storage">Transport and storage</h2>
+      <p>The hosted registry accepts HTTPS only. Records are stored in PostgreSQL with encryption at rest, and the registry connects to the database over TLS.</p>
+      <h2 id="reporting-a-vulnerability">Reporting a vulnerability</h2>
+      <p>Email security reports to the address in the repository's security policy. Reports are acknowledged within two working days, and fixes are noted in the changelog once they ship.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/security.md">This page as Markdown</a></p>
+    </main>
+  </body>
+</html>

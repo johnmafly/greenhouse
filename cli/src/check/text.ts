@@ -12,6 +12,10 @@ export function normalizeText(s: string): string {
     .replace(/\u2026/g, "...")
     .replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, "")
     .replace(/\s+/g, " ")
+    // Inline tags (<strong>x</strong>, y) leave a space before punctuation once stripped, and French
+    // typography puts one before : ; ! ?. Spacing around punctuation is not part of a quote.
+    .replace(/ ([,.;:!?)\]])/g, "$1")
+    .replace(/([(\[]) /g, "$1")
     .trim()
     .toLowerCase();
 }

@@ -48,6 +48,24 @@ reminding me it's not a real product, I need to make it look like a real product
 - Honesty still holds: no invented customers, metrics, testimonials, logos or availability. Where
   a fact cannot be sourced, cut the sentence rather than hedge it.
 
+## Publish a full user guide (decision 0006)
+
+The owner: "We are building open source projects, there is no secrets we need to hide, our audience
+is developer, infra engineers or AI agent, don't you think we share too little information on the
+site? A user guide contains the design, architecture, features, integrations, api and sdk reference
+etc…"
+
+- Ship a user guide with the depth of a mature open-source project: overview and concepts, design
+  and architecture with diagrams, features, install and quickstart, configuration, integrations, API
+  reference (generated from `spec/openapi.yaml`), SDK reference, your domain reference (BotRampart:
+  policy and cohort), self-hosting and operations, security model, FAQ and changelog. Declare where
+  each section lives in `greenhouse.yaml` (`docs:`, see [package-contract.md](package-contract.md)).
+- Make it readable by agents: a Markdown version of every docs page, `/llms.txt` indexing the guide,
+  `/llms-full.txt` with all of it, and stable heading anchors.
+- The `docs` gate fails on a missing or thin section, a missing Markdown version, an `llms.txt` or
+  `llms-full.txt` that misses a page, an architecture section without a diagram, or an API reference
+  that misses an operation in the spec. The guide is written in the same product voice as the site.
+
 ## Steps
 
 | Step | What happens | Done when |
@@ -82,8 +100,8 @@ At most one judged round per project per day. Unchanged content returns the prev
    holds a canary string; any submission that contains it fails.
 3. **No invented customers, quotes or numbers.** No testimonials, logos, customer counts or
    quotes that are not real. Every public factual claim goes in `claims.yaml` with its source URL,
-   a verbatim supporting quote and the date checked. Your own designs, targets and prices are
-   labelled as proposals or estimates.
+   a verbatim supporting quote and the date checked. Your own targets, prices and cost figures
+   are stated as yours (in `cost_model:` and `STATE.md`), never as outside facts.
 4. **No outreach, ads or real signups** unless the intake's `exposure` permits them (for
    BotRampart it does not). The mock signup stores nothing and its last screen says it is a
    preview. Sites stay `noindex` until the owner publishes.

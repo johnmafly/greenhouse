@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Every Example Seed API operation, generated from spec/openapi.yaml.">
+    <title>API reference | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/api.md">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>API reference</h1>
+      <p>The Example Seed API is described in <code>spec/openapi.yaml</code> (OpenAPI 3.1), which this page follows. Every request goes to <code>https://api.example.com</code> over HTTPS and carries an API key as a bearer token in the <code>authorization</code> header. Request and response bodies are JSON.</p>
+      <h2 id="createproject">createProject</h2>
+      <p><code>POST /v1/projects</code> creates a project. The body is a JSON object with a required <code>name</code> string. On success the registry returns status 201 and the stored record.</p>
+      <pre><code data-op="createProject">curl -X POST https://api.example.com/v1/projects \
+  -H "authorization: Bearer $SEED_API_KEY" \
+  -H "content-type: application/json" \
+  -d '{"name": "first-project"}'</code></pre>
+      <h2 id="getproject">getProject</h2>
+      <p><code>GET /v1/projects/{name}</code> reads one project. The <code>name</code> path parameter is required. On success the registry returns status 200 and the record in the same shape <code>createProject</code> returns.</p>
+      <pre><code data-op="getProject">curl https://api.example.com/v1/projects/first-project \
+  -H "authorization: Bearer $SEED_API_KEY"</code></pre>
+      <h2 id="errors">Errors</h2>
+      <p>Errors use standard HTTP status codes with a JSON body that names the problem: 400 for an invalid name, 401 for a missing or wrong key, 404 for an unknown project, 409 when a name is already taken and 429, with a <code>retry-after</code> header, when the account is over its request rate.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/api.md">This page as Markdown</a></p>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="The Example Seed JavaScript SDK: client, methods and errors.">
+    <title>SDK reference | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/sdk.md">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>SDK reference</h1>
+      <p>The JavaScript SDK wraps the HTTP API in a typed client. It runs in Node.js and in browsers, has no runtime dependencies and maps one method to one API operation.</p>
+      <h2 id="client">Client</h2>
+      <p><code>new SeedClient({ apiKey, baseUrl })</code> creates a client. <code>apiKey</code> defaults to the <code>SEED_API_KEY</code> environment variable and <code>baseUrl</code> to the hosted registry. One client is safe to share across your whole application.</p>
+      <h2 id="createproject-name">createProject(name)</h2>
+      <p>Calls <code>POST /v1/projects</code> and resolves to the stored record. It rejects with a <code>SeedError</code> when the name is invalid or already taken.</p>
+      <h2 id="getproject-name">getProject(name)</h2>
+      <p>Calls <code>GET /v1/projects/{name}</code> and resolves to the record. It rejects with a <code>SeedError</code> whose <code>status</code> is 404 when no project has that name.</p>
+      <h2 id="seederror">SeedError</h2>
+      <p>Every failed call rejects with a <code>SeedError</code>. It carries the HTTP <code>status</code>, a machine-readable <code>code</code> and the registry's <code>message</code>, so your code can branch on the code and show the message to people.</p>
+      <h2 id="retries-and-timeouts">Retries and timeouts</h2>
+      <p>The client retries a request once when the connection drops before a response arrives, and times out after 10 seconds. Both values are options on the constructor.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/sdk.md">This page as Markdown</a></p>
+    </main>
+  </body>
+</html>

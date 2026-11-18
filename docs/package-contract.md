@@ -15,7 +15,7 @@ possible layout, not a structure to copy. How the site is judged is in
 | `STATE.md` | yes | Decisions, open findings, next steps, spend. Kept current by the Chief. |
 | `claims.yaml` | yes | Every public factual claim (schema: `schemas/claims.schema.json`). |
 | `spec/openapi.yaml` (or `spec/interface.md` for non-HTTP products) | yes | The build spec docs samples are checked against. |
-| `greenhouse.yaml` | yes | `slug`, `build.command`, `build.output`, `production_branch: main`, the `content:` map and the `cost_model:` below. |
+| `greenhouse.yaml` | yes | `slug`, `build.command`, `build.output`, `production_branch: main`, the `content:` map, the `cost_model:` and the `docs:` block below. |
 
 ## Fixed routes
 
@@ -133,6 +133,63 @@ Amounts on the pricing content that match no tier or overage are listed for the 
 panel. The `sources` quotes are checked for shape here, not fetched; ledger facts on the site go
 through `claims`.
 
+## User guide: the `docs:` block (decision 0006)
+
+Every package ships a comprehensive user guide for its audience (developers, infra engineers and AI
+agents), with the depth an open-source project publishes: nothing about the design is held back.
+`greenhouse.yaml` declares where each of the thirteen required sections lives, as a site path with
+an optional `#anchor`, or a list of them when a section spans pages:
+
+```yaml
+docs:                        # each value: a site path (optionally #anchor), or a list of them
+  overview: /docs/           # overview and concepts
+  architecture: /docs/architecture/   # design and architecture, with at least one diagram
+  features: /docs/features/
+  quickstart: /docs/start/   # install and quickstart
+  configuration: /docs/configuration/
+  integrations: /docs/integrations/
+  api_reference: /docs/api/  # every operation in spec/openapi.yaml
+  sdk_reference: /docs/sdk/
+  domain_reference: [/docs/policy/, /docs/cohorts/]   # the product's own model (BotRampart: policy and cohort)
+  self_hosting: /docs/self-hosting/   # self-hosting and operations
+  security: /docs/security/  # security model
+  faq: /docs/faq/
+  changelog: /docs/changelog/
+```
+
+| Key | What it must contain | Word floor |
+|---|---|---|
+| `overview` | What the product is, who it is for, and the concepts the rest of the guide uses. | 150 |
+| `architecture` | Design and architecture: components, data flow, trust boundaries, with at least one diagram (`<svg>`, `<img>`, `<picture>`, `<object>` or `role="img"`). | 150 |
+| `features` | What the product does, feature by feature. | 150 |
+| `quickstart` | Install and quickstart: from nothing to a first result. | 150 |
+| `configuration` | Every setting, its default and its effect. | 150 |
+| `integrations` | How it connects to the systems its users already run, with code samples tied to the spec. | 150 |
+| `api_reference` | Every operation in `spec/openapi.yaml` (generate it from the spec when there is one): method, path, parameters, bodies, responses, errors. | 150 |
+| `sdk_reference` | The client libraries or CLI: every public method or command. | 150 |
+| `domain_reference` | The product's own model, in full (BotRampart: policy and cohort). | 150 |
+| `self_hosting` | Self-hosting and operations: requirements, install, upgrades, backups, monitoring. | 150 |
+| `security` | The security model: authentication, authorization, data handling, reporting a vulnerability. | 150 |
+| `faq` | Questions a buyer or an engineer asks, answered. | 100 |
+| `changelog` | Every release and what it changed. | 40 |
+
+Word floors count the visible words of the section (the page's `<main>`, or the `#anchor`'s
+element, without nav, header, footer and aside). The guide may share pages with the `content:` map
+(`content.architecture` and `docs.architecture` can be the same page).
+
+**For agents:**
+
+- Every docs page has a Markdown version: `<page>.md` beside it (`/docs/api/` -> `/docs/api.md` or
+  `/docs/api/index.md`), or the URL in `<link rel="alternate" type="text/markdown" href>`. It must
+  be Markdown, not the HTML page again.
+- `/llms.txt` indexes the guide: it links every docs page (its URL or its Markdown URL).
+- `/llms-full.txt` is the whole guide in one file: every docs page, under its URL or its title as a
+  Markdown heading.
+- Headings (`h2`, `h3`) carry stable `id`s, so links into the guide keep working.
+
+The template's `scripts/build.mjs` generates the Markdown versions, `/llms.txt` and
+`/llms-full.txt` from the HTML pages; any build that publishes the same files works.
+
 ## Rules checked by gates
 
 - Every page has `<title>`, one `<h1>`, `lang` on `<html>`, no placeholder text (`lorem`, `TODO`, `TBD`, `[placeholder]`).
@@ -180,15 +237,16 @@ these deterministic gates and writes `checks.json` (`schemas/checks.schema.json`
 | `claim-links` | Every `source_url` in `claims.yaml` resolves, per the policy above (refused automation: `warn` when quoted and checked within 30 days; over 20% refused: fail). |
 | `deployed-sha` | `/.well-known/greenhouse.json` reports the checked sha and slug. |
 | `routes` | `/` and every `content:` path return HTML with status 200, every `#anchor` exists, and an unknown path returns 404. |
-| `links` | Every same-origin link, image, script and stylesheet on every reachable page resolves. |
+| `links` | Every same-origin link, image, script and stylesheet on every reachable page resolves. URLs Cloudflare writes into served pages under `/cdn-cgi/` (email obfuscation's `/cdn-cgi/l/email-protection`) are the host's and are listed as ignored. |
 | `page-structure` | Every page has `lang`, a `<title>` and exactly one `<h1>`. |
 | `placeholder` | No `lorem`, `TODO`, `TBD`, `[placeholder]`, "coming soon" or "coming in package vN" in visible text. |
 | `product-voice` | None of the decision 0005 banned list (by design, in design, planned, plan to / plans to / planning to, propose / proposes / proposed / proposing / proposal / proposals, hypothetical, concept, demo / demos, mockup / mockups / mock-up / mock-ups, prototype / prototypes, roadmap, coming soon, not (yet) built, not for sale, nothing is for sale, for sale yet, illustrative, not a real, first build, come(s) later, ship(s) later, architecture plan, placeholder copy), case-insensitive, whole words only (a "Concepts" heading, "value proposition" and "demonstrate" pass), in the visible text of any page or the 404 page, `<title>`, `<meta content>`, `alt` / `title` / `aria-label` / `aria-description` / `placeholder` attributes, JSON-LD, JavaScript string literals (inline and served, imports followed), `/llms.txt`, `/llms-full.txt` or any linked same-origin `.txt` / `.yaml` / `.md` file. HTML comments are not read. Each hit is listed with its page or file, location and a snippet. |
+| `docs` | The user guide (decision 0006): `greenhouse.yaml` has a `docs:` block with all thirteen sections; each section's pages return HTML with status 200, every `#anchor` exists, and each section meets its word floor; the architecture section has a diagram; with a `spec/openapi.yaml`, the API reference names every operation (its `operationId` or its path); every docs page has a Markdown version; `/llms.txt` lists every docs page and `/llms-full.txt` carries every docs page. Headings without an `id` warn. |
 | `noindex` | Every page sends `X-Robots-Tag: noindex` and has the robots meta tag. |
 | `spec-samples` | Every `<code data-op>` sits in a `<pre>` and names an operation in the spec (no samples: `warn`). |
 | `secrets` | Secret patterns in committed files, build output and deployed pages (values never printed). |
 | `canary` | No canary string from `--canary-file` anywhere (`skip` without the flag). A failure carries the integrity cap (5.0, decision 0003). |
-| `asset-cache` | Every same-origin stylesheet, script, module (including static imports in JS), `@font-face` font and preload that `/` and the crawled pages load either has a content fingerprint in its URL (a hash in the file name, such as `site.3f9a1c2b.css`, or a hash-like `?v=` value) or is served with `Cache-Control: no-cache`, `no-store` or `max-age=0`. An unversioned URL with a positive `max-age`, `immutable`, or no `Cache-Control` fails: a returning visitor keeps the old file under new HTML (a Cloudflare zone's Browser Cache TTL can add hours). Each offender is listed with its URL and cache header. |
+| `asset-cache` | Every same-origin stylesheet, script, module (including static imports in JS), `@font-face` font and preload that `/` and the crawled pages load either has a content fingerprint in its URL (a hash in the file name, such as `site.3f9a1c2b.css`, or a hash-like `?v=` value) or is served with `Cache-Control: no-cache`, `no-store` or `max-age=0`. An unversioned URL with a positive `max-age`, `immutable`, or no `Cache-Control` fails: a returning visitor keeps the old file under new HTML (a Cloudflare zone's Browser Cache TTL can add hours). Each offender is listed with its URL and cache header. Scripts Cloudflare injects under `/cdn-cgi/` (email obfuscation, Web Analytics) are the host's, not the package's: they are listed as ignored, as in `webkit-iphone`. |
 | `axe` | axe-core on every page: no critical violations (serious: `warn`). axe is injected through the DevTools protocol, so it runs under a strict CSP (`script-src 'self'`) with the page's CSP still enforced. |
 | `signup-flow` | The mock signup reaches its final preview screen, storing and sending nothing. |
 | `lighthouse` | Mobile form factor on `/` and every `content:` path, median of 5 runs per route under `~/.greenhouse/perf.lock`. Fails if any route's median performance is below 90, CLS above 0.1 or TBT above 200 ms. Accessibility: 90+ pass, 85-89 `warn`, under 85 fail. |
@@ -217,7 +275,7 @@ the panel sees it. A claim passes only when both judges say its quote supports i
 
 | Gate | Mechanical proof | Judges | Cap on failure |
 |---|---|---|---|
-| `claims` | Every `source_url` fetched with a browser User-Agent (429 retried once) and archived under `--archive-dir` (default `<round-dir>/sources/`, else `~/.greenhouse/archive/<slug>-<sha12>/`: one file per body, named by its sha256, plus `index.json`). The `quote` must be in the source verbatim (up to whitespace, quote marks, dashes and case; `...` marks an omission); pages that need JavaScript are rendered in the browser. | Does the quote support the claim exactly as written? | `unsupported_claim` (7.0) |
+| `claims` | Every `source_url` fetched with a browser User-Agent (429 retried once) and archived under `--archive-dir` (default `<round-dir>/sources/`, else `~/.greenhouse/archive/<slug>-<sha12>/`: one file per body, named by its sha256, plus `index.json`). The `quote` must be in the source verbatim (up to whitespace, spacing around punctuation, quote marks, dashes and case; `...` marks an omission); pages that need JavaScript are rendered in the browser. | Does the quote support the claim exactly as written? | `unsupported_claim` (7.0) |
 | `claim-sweep` | Sentences on every page with a figure, a comparison, a superlative or research, not covered by a ledger claim. | Is this a claim about the outside world that needs a public source? | failed gate (7.0) |
 | `pricing` | Tiers, prices, overages, cost to serve (a free tier below cost only with `below_cost_reason`) and the self-hosting path against `cost_model:` (above). | Does the pricing text contradict the cost model? | failed gate (7.0) |
 | `social-proof` | Testimonials, attributions, logo walls, customer counts, ratings and press mentions not backed by the ledger. | Is this presented as real social proof for this product? | `invented_social_proof` (5.0) |

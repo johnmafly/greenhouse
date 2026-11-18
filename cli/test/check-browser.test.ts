@@ -380,7 +380,7 @@ test("greenhouse check CLI: the template passes every gate but template-likeness
   assert.equal(checks.sha, sha);
   assert.deepEqual(
     checks.gates.map((g: { id: string }) => g.id),
-    ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "template-likeness", "secrets", "canary", "asset-cache", "axe", "signup-flow", "reduced-motion", "no-js-content", "webkit-iphone", "lighthouse"],
+    ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "docs", "template-likeness", "secrets", "canary", "asset-cache", "axe", "signup-flow", "reduced-motion", "no-js-content", "webkit-iphone", "lighthouse"],
   );
   assert.deepEqual(
     checks.gates.filter((g: { status: string }) => g.status !== "pass").map((g: { id: string; status: string }) => `${g.id}:${g.status}`),

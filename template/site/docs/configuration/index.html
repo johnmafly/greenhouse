@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Every setting the Example Seed registry and SDK read.">
+    <title>Configuration | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/configuration.md">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>Configuration</h1>
+      <p>The registry and the SDK read their settings from environment variables, so the same build runs in every environment. Nothing is read from files at runtime.</p>
+      <h2 id="client-settings">Client settings</h2>
+      <p><code>SEED_API_KEY</code> holds the key the SDK sends with every request. <code>SEED_BASE_URL</code> points the SDK at a registry; it defaults to the hosted registry and you set it to your own address when you self-host.</p>
+      <h2 id="registry-settings">Registry settings</h2>
+      <p><code>DATABASE_URL</code> is the PostgreSQL connection string the registry stores projects in. <code>PORT</code> is the port the registry listens on. <code>LOG_LEVEL</code> sets how much the registry logs: <code>info</code> by default, <code>debug</code> to include every request.</p>
+      <h2 id="naming-rules">Naming rules</h2>
+      <p>Names are lowercase letters, digits and hyphens, start with a letter and are at most 63 characters long. The rule is fixed so that a name is valid in every registry and every client.</p>
+      <h2 id="changing-settings">Changing settings</h2>
+      <p>The registry reads its settings at startup. Change a variable and restart the service; because the registry is stateless, a rolling restart changes settings without downtime.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/configuration.md">This page as Markdown</a></p>
+    </main>
+  </body>
+</html>
