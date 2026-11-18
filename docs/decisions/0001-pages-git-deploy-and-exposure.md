@@ -3,13 +3,16 @@
 Issue: #1. Date: 2026-11-18. Plan v7 assumptions 2 and 3 (sections 9, 11, 14), adjusted by
 owner decision 0000-1 (project sites are **public by default**, `noindex` until published).
 
+Status (updated 2026-11-18, follow-up to #1): **native Pages Git integration is in force.**
+The GitHub Actions direct-upload fallback ran for one day of merges and is retired (section 6).
+
 ## Summary
 
 | Point | Answer | In force |
 |---|---|---|
-| Pages project connected to this repo through the Cloudflare GitHub app | **No, for now.** The account's only Pages Git connection is GitHub user `agenthatch-ai`; `johnmafly` is not connected, so the API returns `8000011`. | **Fallback:** GitHub Actions direct upload (`.github/workflows/deploy-board.yml`). |
-| Push to `main` deploys with no token held by a Chief | **Fallback yes.** The deploy token lives only in this repo's Actions secrets, scoped to Pages Write; Chiefs never hold it. Native Git integration (no token at all) stays preferred once `johnmafly` is connected. | Actions workflow, runs only on `push` to `main`. |
-| Custom domain `greenhouse.agenthatch.ai` | **Yes.** Attached to `greenhouse-board`, proxied CNAME to `greenhouse-board.pages.dev`, serves 200. | Live. |
+| Pages project connected to this repo through the Cloudflare GitHub app | **Yes**, since the owner connected `johnmafly` (connection `provider_account_id` 32551433, created 2026-11-18T09:53Z). At first this was blocked: the only connection was `agenthatch-ai`, and the API returned `8000011` (section 1). | **Native Git:** `greenhouse-board` builds `main` on Cloudflare (section 6). |
+| Push to `main` deploys with no token held by a Chief | **Yes.** Cloudflare builds from GitHub itself; no deploy token exists in the repo or with anyone else. The Actions fallback (section 2) is retired: workflow deleted, repo secrets deleted, Pages-only token deleted. | Native Git, production branch `main`, no preview deployments. |
+| Custom domain `greenhouse.agenthatch.ai` | **Yes.** Attached to the Git-connected `greenhouse-board`, proxied CNAME to `greenhouse-board.pages.dev`, serves 200. | Live. |
 | `_headers` sends `X-Robots-Tag: noindex` on Pages | **Yes**, on both `pages.dev` and the custom domain. | `board/public/_headers`, guarded by `board/test/headers.test.ts`. |
 | Publicly reachable without Access | **Yes.** No Access application covers either hostname. | Owner decision 0000-1. |
 | Free-plan limits that matter | Recorded below. | |
@@ -25,7 +28,7 @@ Cloudflare GitHub app is installed and that sites are public by default but `noi
 All calls ran on the Mac mini (agenthatchminisg) with the account-scoped `CLOUDFLARE_API_TOKEN`
 (account `0d781804fa06b08ae55e36c7e63dbce1`), which was never printed.
 
-### 1. Native Git integration: blocked
+### 1. Native Git integration: blocked at first (resolved in section 6)
 
 ```bash
 curl -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -60,7 +63,7 @@ GitHub, Add account, install "Cloudflare Workers and Pages" on `johnmafly` (all 
 or at least `greenhouse` and future project repos). Stop once `johnmafly/greenhouse` is listed;
 projects are created by API.
 
-### 2. Fallback in force: GitHub Actions direct upload
+### 2. Fallback (retired 2026-11-18, see section 6): GitHub Actions direct upload
 
 - Pages project `greenhouse-board` created as a direct-upload project
   (id `401737b6-97c8-4152-8613-f380e6b6a791`, `greenhouse-board.pages.dev`, created
@@ -95,9 +98,10 @@ projects are created by API.
   sha c1563f5d3c3603acb923c8ed6019b0fbaf5636e3  status success
   ```
 
-  The first workflow deployment (trigger `ad_hoc`, `commit_hash` = the merge SHA on `main`)
-  happens when this record's pull request merges; check with
-  `GET /accounts/{id}/pages/projects/greenhouse-board/deployments` and the `deploy-board` run.
+  The workflow then deployed the #22 merge: `deploy-board` run 44280700905 on `f45eefb`
+  succeeded, giving production deployment `9edaab0a` with `commit_hash`
+  `f45eefbc63a91725931bfb08915a8be5f3796be4`. It also deployed the next merge (`7f3d75e`, run
+  44280902319) before it was retired.
 
 ### 3. Custom domain
 
@@ -157,39 +161,96 @@ From [Pages limits](https://developers.cloudflare.com/pages/platform/limits/) (c
 Direct upload via CI: [Use Direct Upload with continuous integration](https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/).
 Headers: [Pages headers](https://developers.cloudflare.com/pages/configuration/headers/).
 
+### 6. Native Git integration in force (follow-up, same day)
+
+The owner installed the Cloudflare Workers and Pages app on `johnmafly`:
+
+```bash
+curl ... /accounts/$A/pages/connections
+# [{"owner":"johnmafly","provider_account_id":"32551433",
+#   "settings_url":"https://github.com/settings/installations/183261034",
+#   "created_on":"2026-11-18T09:53:18Z", ...}, {"owner":"agenthatch-ai", ...}]
+curl ... /accounts/$A/pages/connections/github/johnmafly/repos
+# lists greenhouse (repo_id 1462593546), among others
+```
+
+Both connections still report `has_valid_oauth_token: false`; project creation and builds
+work regardless, so that flag is not a blocker.
+
+Switch, all by API with the account token (never printed):
+
+1. Removed the custom domain from the direct-upload project (Pages refuses to delete a project
+   with custom domains, error `8000028`), then deleted project
+   `401737b6-97c8-4152-8613-f380e6b6a791`.
+2. Recreated `greenhouse-board` (the name was reusable at once, so the hostname
+   `greenhouse-board.pages.dev` and the DNS record are unchanged), id
+   `c67918ca-aaaa-4d07-95c1-bec33f08913e`:
+
+   ```json
+   {"name":"greenhouse-board","production_branch":"main",
+    "source":{"type":"github","config":{"owner":"johnmafly","owner_id":"32551433",
+      "repo_name":"greenhouse","repo_id":"1462593546","production_branch":"main",
+      "pr_comments_enabled":false,"deployments_enabled":true,"production_deployments_enabled":true,
+      "preview_deployment_setting":"none","preview_branch_excludes":["*"]}},
+    "build_config":{"build_command":"npm ci || npm install --no-audit --no-fund; npm run board:build",
+      "destination_dir":"board/dist","root_dir":""},
+    "deployment_configs":{"production":{"env_vars":{"NODE_VERSION":{"type":"plain_text","value":"24"}}},
+      "preview":{"env_vars":{"NODE_VERSION":{"type":"plain_text","value":"24"}}}}}
+   ```
+
+   With `preview_deployment_setting: none`, pull request branches (including forks) are never
+   built, so nothing outside `main` runs in Cloudflare's build.
+3. Reattached `greenhouse.agenthatch.ai` (domain id `df7b2963-e202-499f-aa5e-e8cc473dfeb9`,
+   `active` within a minute). The CNAME `greenhouse` → `greenhouse-board.pages.dev`
+   (record `95a7d88d…`) needed no change.
+4. First Git build, triggered for `main` with `POST .../deployments` (`branch=main`):
+   deployment `647dcfb1`, `commit_hash` `7f3d75e06a145e0c4e3032e2438377f1146a61e4`, build and
+   deploy `success`. Later pushes to `main` build by themselves.
+5. Retired the fallback: `gh workflow disable deploy-board.yml` (so merges before this record
+   landed did not run it), repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+   deleted (`gh secret list` is empty), the `board` Actions environment deleted, token
+   `a872e7e75fea4eb72235d48b367ff7b9` deleted (`GET` now returns `1003 token not found`), and
+   `.github/workflows/deploy-board.yml` removed by the pull request that updates this record.
+
+After the switch both hostnames still return `HTTP/2 200` with
+`x-robots-tag: noindex, nofollow`. The deployment for the merge of that pull request (a
+`github:push` build whose `commit_hash` is the merge SHA) is recorded on the pull request.
+
 ## Options considered
 
-1. **Native Pages Git integration** (v7). No credential outside Cloudflare. Blocked until the
-   owner connects `johnmafly`. Preferred.
+1. **Native Pages Git integration** (v7). No credential outside Cloudflare. Was blocked until
+   the owner connected `johnmafly`. **Chosen; in force.**
 2. **GitHub Actions + wrangler direct upload** with a Pages-Write-only token in repo secrets.
-   Works today; chosen as the fallback.
+   Was the fallback for the first day; **retired**.
 3. Deploy from the Mac mini with the admin token. Rejected: ties deploys to the Mac mini being
    up and puts the account-wide token in the deploy path.
 
 ## Decision
 
-- The board deploys by **option 2** now. Switch to **option 1** once the owner connects
-  `johnmafly`: create a Git-connected project, move `greenhouse.agenthatch.ai` to it, delete
-  `deploy-board.yml`, the two repo secrets and token `a872e7e7...`.
+- The board deploys by **option 1** (native Git integration). Option 2 is retired; its
+  workflow, secrets and token are gone. Do not reintroduce a deploy token in any repo.
+- Project repos get Git-connected Pages projects the same way (the `johnmafly` installation
+  must cover them; today it lists every `johnmafly` repo), with `preview_deployment_setting:
+  none` until v7 decides otherwise.
 - Project sites stay public with `X-Robots-Tag: noindex` from `_headers` until the owner
   publishes; Access only when an intake asks for it.
 
 ## Risks and implications
 
-- **The deploy token is account-wide for Pages.** Cloudflare cannot scope a token to one Pages
-  project, so whoever can run code with this secret can overwrite or delete any Pages project
-  in the account, including the board and every project site (it cannot touch DNS, Workers
-  scripts or R2). The secret only runs from a workflow on `main`, and `main` requires a pull
-  request with green `ci` but 0 approvals. Write access is the owner (`johnmafly`, admin) plus
-  any Reason Session acting through the workspace's GitHub connection, which today includes
-  any Chief that uses the same connection (v7 section 11 already flags this as tamper-evident).
-  Before Chiefs exist, add a CODEOWNERS entry for `.github/workflows/` with a required owner
-  review, or move to native Git deploys.
-- **Project repos.** If native Git stays unavailable and project repos use the same fallback,
-  each Chief's repo holds this secret, and a Chief can edit its own workflow to deploy anything
-  anywhere in Pages. That breaks v7's "Chiefs hold no Cloudflare credential"; it is
-  tamper-evident (workflow changes and deployments are logged) but not tamper-proof. So
-  **project repos must not get the Actions fallback**: connect `johnmafly` (or the GitHub
-  account that owns project repos) to Pages before onboarding the first seed (#13), or have
-  the judge deploy project sites from the Mac mini with its own token instead.
-- Direct-upload projects cannot be converted to Git-connected ones; the switch is a new project.
+- **Resolved by native Git: the account-wide Pages deploy token.** While the fallback ran,
+  a Pages-Write token in repo secrets could overwrite any Pages project in the account
+  (Cloudflare cannot scope a token to one project). It is deleted; no repo holds a Cloudflare
+  credential now.
+- **What a repo writer still controls.** With native Git, anyone who can land a commit on
+  `main` controls what that repo's site serves (the build command runs the repo's own
+  `npm run board:build`), but cannot reach other Pages projects, DNS or the account. The build
+  settings (command, output dir, env) live in Cloudflare, not in the repo. `main` needs a
+  pull request with green `ci` but 0 approvals, and every actor shares the workspace's GitHub
+  identity, so this is tamper-evident (commits and deployments are logged), not tamper-proof.
+  CODEOWNERS was considered and deferred as an owner decision: with one shared identity it
+  would not bind.
+- **Project repos.** Use native Git per repo; never the Actions fallback, which would hand a
+  Chief an account-wide Pages credential through its own workflow.
+- **Build quota.** Native Git builds count against the Free plan's 500 builds/month and
+  1 concurrent build (section 5), shared by the board and every project repo.
+- Direct-upload projects cannot be converted to Git-connected ones; the switch was a new project.
