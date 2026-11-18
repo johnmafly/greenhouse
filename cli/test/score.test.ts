@@ -146,6 +146,15 @@ test("cap 5.0 from an integrity gate, deduplicated with the reviewer flag", () =
   assert.deepEqual(computeScore(inp).caps_applied, [{ reason: "invented_social_proof", max: 5 }]);
 });
 
+test("cap 5.0: a failed canary gate is an integrity cap (canary_leak, decision 0003)", () => {
+  const s = computeScore(failGate(base(), "canary"));
+  assert.deepEqual(s.caps_applied, [{ reason: "canary_leak", max: 5 }]);
+  assert.equal(s.composite_raw, 9);
+  assert.equal(s.composite, 5);
+  assert.equal(s.gates_green, false);
+  assert.deepEqual(CAP_GATES["canary"], { cap: "integrity", reason: "canary_leak" });
+});
+
 test("several caps: all listed (lowest first), composite takes the lowest", () => {
   const inp = failGate(failGate(base(), "lighthouse-perf"), "claims");
   inp.reviews = clone(inp.reviews);
