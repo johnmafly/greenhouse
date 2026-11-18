@@ -12,8 +12,8 @@ export const CHECK_USAGE = `greenhouse check --repo <path> [--url <deployment>] 
                  [--assisted --judge <id>=<family>:<command> --judge <id>=<family>:<command> [--archive-dir <dir>]]
 
 Runs every deterministic gate against a project package and writes checks.json:
-  build, package-files, claim-links, deployed-sha, routes, links, page-structure, placeholder, noindex,
-  spec-samples, template-likeness, secrets, canary, asset-cache, axe, signup-flow, reduced-motion,
+  build, package-files, claim-links, deployed-sha, routes, links, page-structure, placeholder, product-voice,
+  noindex, spec-samples, template-likeness, secrets, canary, asset-cache, axe, signup-flow, reduced-motion,
   no-js-content, webkit-iphone, lighthouse.
 
 Routes, the crawl, no-js-content, the signup start and Lighthouse follow the content map in

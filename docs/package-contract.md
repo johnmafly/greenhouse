@@ -151,6 +151,9 @@ through `claims`.
 - Code samples in docs that call the product use `<pre><code data-op="operationId">`; every `operationId` must exist in the spec.
 - Sites are **public** (owner decision 2026-11-18) but send `X-Robots-Tag: noindex` (via `_headers`)
   and `<meta name="robots" content="noindex">` until the owner publishes at graduation.
+- Copy reads as a shipping product, in present tense (`product-voice` gate, decision 0005): no
+  framing of the product as hypothetical, planned, proposed, a concept, a demo, a prototype or "by
+  design". Honesty still holds: where a fact cannot be sourced, cut the sentence rather than hedge it.
 - No invented testimonials, logos, customer counts or quotes.
 - No text aimed at reviewers or hidden from humans.
 - No secrets anywhere in the repo or the build output.
@@ -180,6 +183,7 @@ these deterministic gates and writes `checks.json` (`schemas/checks.schema.json`
 | `links` | Every same-origin link, image, script and stylesheet on every reachable page resolves. |
 | `page-structure` | Every page has `lang`, a `<title>` and exactly one `<h1>`. |
 | `placeholder` | No `lorem`, `TODO`, `TBD`, `[placeholder]`, "coming soon" or "coming in package vN" in visible text. |
+| `product-voice` | None of the decision 0005 banned list (by design, in design, planned, plan to / plans to / planning to, propose / proposes / proposed / proposing / proposal / proposals, hypothetical, concept, demo / demos, mockup / mockups / mock-up / mock-ups, prototype / prototypes, roadmap, coming soon, not (yet) built, not for sale, nothing is for sale, for sale yet, illustrative, not a real, first build, come(s) later, ship(s) later, architecture plan, placeholder copy), case-insensitive, whole words only (a "Concepts" heading, "value proposition" and "demonstrate" pass), in the visible text of any page or the 404 page, `<title>`, `<meta content>`, `alt` / `title` / `aria-label` / `aria-description` / `placeholder` attributes, JSON-LD, JavaScript string literals (inline and served, imports followed), `/llms.txt`, `/llms-full.txt` or any linked same-origin `.txt` / `.yaml` / `.md` file. HTML comments are not read. Each hit is listed with its page or file, location and a snippet. |
 | `noindex` | Every page sends `X-Robots-Tag: noindex` and has the robots meta tag. |
 | `spec-samples` | Every `<code data-op>` sits in a `<pre>` and names an operation in the spec (no samples: `warn`). |
 | `secrets` | Secret patterns in committed files, build output and deployed pages (values never printed). |

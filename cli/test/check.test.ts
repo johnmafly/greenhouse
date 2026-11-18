@@ -554,7 +554,7 @@ test("lighthouse: median of runs; performance >= 90, CLS <= 0.1, TBT <= 200 ms e
 // --- whole check, no browser ------------------------------------------------------------------
 
 test("gate ids that carry a named cap in score.ts are not reused by deterministic gates, except canary and reduced-motion", () => {
-  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "template-likeness", "secrets", "asset-cache", "axe", "signup-flow", "no-js-content", "webkit-iphone", "lighthouse"];
+  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "template-likeness", "secrets", "asset-cache", "axe", "signup-flow", "no-js-content", "webkit-iphone", "lighthouse"];
   for (const id of ids) assert.ok(!(id in CAP_GATES), id);
   // A failed canary gate carries the integrity cap (5.0), reason canary_leak (decision 0003).
   assert.deepEqual(CAP_GATES["canary"], { cap: "integrity", reason: "canary_leak" });
@@ -573,7 +573,7 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
     assert.equal(checks.slug, "example-seed");
     assert.equal(checks.all_green, false);
     const by = Object.fromEntries(checks.gates.map((g) => [g.id, g]));
-    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets", "asset-cache"])
+    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "secrets", "asset-cache"])
       assert.equal(by[id].status, "pass", `${id}: ${by[id].summary}`);
     assert.equal(by.canary.status, "skip");
     // The template is the template: near-identity by definition.

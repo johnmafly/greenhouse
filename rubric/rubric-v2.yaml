@@ -21,7 +21,7 @@ dimensions:
   - id: copy_voice
     name: Copy and voice
     weight: 0.15
-    nine: Lines you would quote, with a point of view; specific, short, no generic SaaS phrasing; a reader wants to keep scrolling.
+    nine: Lines you would quote, with a point of view; specific, short, no generic SaaS phrasing; a reader wants to keep scrolling. Present tense, as a shipping product; hedged or hypothetical framing (planned, proposed, concept, demo, by design, coming later) scores down (decision 0005).
   - id: distinctness
     name: Distinctness and information architecture
     weight: 0.15
