@@ -18,5 +18,7 @@ if (!cmd || cmd === "--help" || cmd === "-h") {
 }
 if (cmd === "score") process.exit((await import("./score.ts")).run(process.argv.slice(3)));
 if (cmd === "validate") process.exit((await import("./validate.ts")).run(process.argv.slice(3)));
+if (cmd === "capture") process.exit(await (await import("./capture.ts")).main(process.argv.slice(3)));
+if (cmd === "submit") process.exit(await (await import("./submit.ts")).main(process.argv.slice(3)));
 process.stderr.write(`greenhouse: '${cmd}' is not implemented yet\n`);
 process.exit(2);
