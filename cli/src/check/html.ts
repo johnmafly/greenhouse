@@ -103,3 +103,36 @@ export function codeSamples(html: string): CodeSample[] {
   }
   return out;
 }
+
+/** Fragment targets on a page: every element id, plus <a name>. */
+export function fragmentIds(html: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of stripNonContent(html).matchAll(/<([a-z][a-z0-9-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi)) {
+    const a = parseAttrs(m[2]);
+    if (a.id) out.add(a.id);
+    if (m[1].toLowerCase() === "a" && a.name) out.add(a.name);
+  }
+  return out;
+}
+
+/** h1-h3 headings in document order as "h2 text" (text lower-cased, whitespace collapsed). */
+export function headingOutline(html: string): string[] {
+  const out: string[] = [];
+  for (const m of stripNonContent(html).matchAll(/<h([1-3])\b[^>]*>([\s\S]*?)<\/h\1\s*>/gi)) {
+    const text = visibleText(m[2]).toLowerCase();
+    if (text) out.push(`h${m[1]} ${text}`);
+  }
+  return out;
+}
+
+/** Link labels in the first <nav> (else the first <header>), lower-cased. */
+export function navLabels(html: string): string[] {
+  const src = stripNonContent(html);
+  const block = /<nav\b[\s\S]*?<\/nav\s*>/i.exec(src)?.[0] ?? /<header\b[\s\S]*?<\/header\s*>/i.exec(src)?.[0] ?? "";
+  const out: string[] = [];
+  for (const m of block.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a\s*>/gi)) {
+    const t = visibleText(m[1]).toLowerCase();
+    if (t) out.push(t);
+  }
+  return out;
+}

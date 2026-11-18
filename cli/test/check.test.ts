@@ -21,8 +21,12 @@ import {
   secretsGate,
   specSamplesGate,
 } from "../src/check/gates.ts";
-import { codeSamples, h1Count, htmlLang, references, title, visibleText } from "../src/check/html.ts";
-import { classifyScore, lighthouseGate, medianOf } from "../src/check/lighthouse.ts";
+import { parse as parseYaml } from "yaml";
+import { CONTENT_KEYS, contentSections, parseContentMap, signupStart, startRoutes } from "../src/check/content.ts";
+import { codeSamples, fragmentIds, h1Count, headingOutline, htmlLang, navLabels, references, title, visibleText } from "../src/check/html.ts";
+import { classifyRoute, classifyScore, lighthouseGate, medianOf } from "../src/check/lighthouse.ts";
+import { jaccard, readSiblings, signatureOf, similarity, templateLikenessGate, templateSignature } from "../src/check/likeness.ts";
+import { REQUIRED_ROUTES } from "../src/check/site.ts";
 import type { LhRun } from "../src/check/lighthouse.ts";
 import { LockTimeoutError, acquireLock } from "../src/check/lock.ts";
 import { headersFor, parseHeaders, serveStatic } from "../src/check/serve.ts";
@@ -30,6 +34,7 @@ import { runCheck } from "../src/check/run.ts";
 import { FAKE_SHA, TEMPLATE, builtSite, edit, serveSite, templateRepo, tmp } from "./check-helpers.ts";
 
 const page = (dir: string, route: string) => join(dir, route, "index.html");
+const templateContent = () => parseContentMap(parseYaml(readFileSync(join(TEMPLATE, "greenhouse.yaml"), "utf8")));
 
 // --- html extraction --------------------------------------------------------------------------
 
@@ -131,6 +136,49 @@ test("package-files: passes on the template, fails on invalid claims.yaml, a mis
   assert.equal(packageFilesGate(null).status, "fail");
 });
 
+test("package-files: content map (contract v2) — all seven keys, site paths, optional #anchor; absent map warns", () => {
+  const ok = packageFilesGate(TEMPLATE);
+  assert.equal(ok.status, "pass", ok.summary);
+  assert.equal((ok.details as { content: Record<string, string> }).content.signup, "/signup/");
+  const bad = templateRepo((d) =>
+    edit(join(d, "greenhouse.yaml"), (s) =>
+      s
+        .replace("  pricing: /pricing/\n", "")
+        .replace("comparison: /docs/comparison/", "comparison: https://example.com/vs/")
+        .replace("integration: /docs/integration/", "integration: /docs/../x/")
+        .replace("how_it_works: /docs/how-it-works/", "how_it_works: '/#'")
+        .replace("signup: /signup/", "signup: /signup/\n  pricng: /#plans"),
+    ),
+  );
+  const g = packageFilesGate(bad.dir);
+  assert.equal(g.status, "fail");
+  const problems = (g.details as { problems: string[] }).problems.join("\n");
+  assert.match(problems, /content\.pricing is missing/);
+  assert.match(problems, /content\.comparison: "https:\/\/example\.com\/vs\/" is not a site path/);
+  assert.match(problems, /content\.integration: .* is not a site path/);
+  assert.match(problems, /content\.how_it_works: .* empty or invalid #anchor/);
+  assert.match(problems, /content\.pricng is not a known key/);
+  const none = templateRepo((d) => edit(join(d, "greenhouse.yaml"), (s) => s.replace(/\ncontent:[\s\S]*$/, "\n")));
+  const w = packageFilesGate(none.dir);
+  assert.equal(w.status, "warn", w.summary);
+  assert.match(w.summary, /no content map .* falls back to the v1 route list/);
+});
+
+test("content map: start routes, anchors, signup start, sections, v1 fallback", () => {
+  const m = parseContentMap({ content: { how_it_works: "/#how", getting_started: "/docs/start/", architecture: "/docs/start/#arch", integration: "/docs/integration/", comparison: "/vs/", pricing: "/#plans", signup: "/try/" } });
+  assert.deepEqual(m.errors, []);
+  assert.deepEqual(startRoutes(m), { routes: ["/", "/docs/start/", "/docs/integration/", "/vs/", "/try/"], fallback: false });
+  assert.equal(m.refs.find((r) => r.key === "pricing")?.anchor, "plans");
+  assert.equal(signupStart(m), "/try/");
+  assert.deepEqual(contentSections(m).map((s) => s.label), ["home", ...CONTENT_KEYS]);
+  const none = parseContentMap({ slug: "x" });
+  assert.equal(none.present, false);
+  assert.deepEqual(startRoutes(none), { routes: [...REQUIRED_ROUTES], fallback: true });
+  assert.equal(signupStart(none), "/signup/");
+  assert.match(parseContentMap({ content: ["/"] }).errors[0], /must be a mapping/);
+  assert.match(parseContentMap({ content: { ...Object.fromEntries(CONTENT_KEYS.map((k) => [k, "/"])), signup: "//evil.example/" } }).errors[0], /signup: .* is not a site path/);
+});
+
 // --- deployed sha -----------------------------------------------------------------------------
 
 test("deployed-sha: passes when the deployment reports the sha and slug, fails otherwise", async () => {
@@ -157,10 +205,49 @@ test("deployed-sha: passes when the deployment reports the sha and slug, fails o
 
 // --- routes and links -------------------------------------------------------------------------
 
-test("routes: passes on the template, fails on a missing route and a docs index missing a section", async () => {
+test("routes (v2): / and every content path return HTML, anchors exist, unknown paths get a 404 page", async () => {
+  const content = templateContent();
   const ok = await serveSite();
   try {
-    assert.equal(routesGate(ok.site).status, "pass");
+    const g = await routesGate(ok.site, content);
+    assert.equal(g.status, "pass", g.summary);
+    assert.equal(g.metrics?.fallback, false);
+  } finally {
+    await ok.close();
+  }
+  // A content path that 404s, an anchor that is missing, and no 404 page.
+  const withAnchor = parseContentMap({ content: { ...Object.fromEntries(content.refs.map((r) => [r.key, r.raw])), pricing: "/pricing/#plans" } });
+  const bad = await serveSite((d) => {
+    rmSync(join(d, "docs", "integration"), { recursive: true });
+    rmSync(join(d, "404.html"));
+  });
+  try {
+    const g = await routesGate(bad.site, withAnchor);
+    assert.equal(g.status, "fail");
+    const problems = (g.details as { problems: string[] }).problems.join("\n");
+    assert.match(problems, /content\.integration \/docs\/integration\/: HTTP 404/);
+    assert.match(problems, /content\.pricing: \/pricing\/ has no element with id "plans"/);
+    assert.match(problems, /404 page: .* without an HTML page/);
+  } finally {
+    await bad.close();
+  }
+  // The anchor passes once the element exists.
+  const anchored = await serveSite((d) => edit(page(d, "pricing"), (s) => s.replace("<h1>", '<h1 id="plans">')));
+  try {
+    assert.equal((await routesGate(anchored.site, withAnchor)).status, "pass");
+  } finally {
+    await anchored.close();
+  }
+  assert.equal((await routesGate(null, content)).status, "fail");
+});
+
+test("routes (v1 fallback, no content map): warns when the v1 routes pass, fails on a missing route and docs section", async () => {
+  const none = parseContentMap({});
+  const ok = await serveSite();
+  try {
+    const g = await routesGate(ok.site, none);
+    assert.equal(g.status, "warn", g.summary);
+    assert.match(String((g.details as { fallback: string }).fallback), /no content map/);
   } finally {
     await ok.close();
   }
@@ -169,7 +256,7 @@ test("routes: passes on the template, fails on a missing route and a docs index 
     edit(page(d, "docs"), (s) => s.replace(/<li><a href="\/docs\/comparison\/">Comparison<\/a><\/li>/, ""));
   });
   try {
-    const g = routesGate(bad.site);
+    const g = await routesGate(bad.site, none);
     assert.equal(g.status, "fail");
     const problems = (g.details as { problems: string[] }).problems.join("\n");
     assert.match(problems, /\/pricing\/: HTTP 404/);
@@ -177,7 +264,67 @@ test("routes: passes on the template, fails on a missing route and a docs index 
   } finally {
     await bad.close();
   }
-  assert.equal(routesGate(null).status, "fail");
+});
+
+// --- template likeness ------------------------------------------------------------------------
+
+test("html: fragment ids, heading outline, nav labels", () => {
+  const html = '<nav><a href="/">Home</a> <a href="/x">Our <b>Story</b></a></nav><h1 id="top">Hi</h1><h2>Plans &amp; pricing</h2><h4>skip</h4><a name="old"></a><script>"<h2>no</h2>"</script>';
+  assert.deepEqual([...fragmentIds(html)].sort(), ["old", "top"]);
+  assert.deepEqual(headingOutline(html), ["h1 hi", "h2 plans & pricing"]);
+  assert.deepEqual(navLabels(html), ["home", "our story"]);
+});
+
+test("template-likeness: the template itself fails (>= 0.8), a redesigned site passes, siblings are compared", async () => {
+  assert.equal(jaccard([], []), 1);
+  assert.equal(jaccard(["a", "b"], ["b", "c"]), 1 / 3);
+  const tpl = templateSignature();
+  assert.ok(tpl.routes.includes("/") && tpl.routes.includes("/docs/how-it-works/") && !tpl.routes.some((r) => r.includes("404")), tpl.routes.join(","));
+  const same = await serveSite();
+  let selfChecks: string;
+  try {
+    const g = templateLikenessGate(same.site);
+    assert.equal(g.status, "fail", g.summary);
+    assert.equal(g.metrics?.template_similarity, 1);
+    selfChecks = join(tmp(), "checks.json");
+    writeFileSync(selfChecks, JSON.stringify({ slug: "sibling-a", sha: FAKE_SHA, gates: [g] }));
+  } finally {
+    await same.close();
+  }
+  // A site with its own IA, nav, headings and copy.
+  const own = await serveSite((d) => {
+    for (const r of ["docs", "pricing", "signup"]) rmSync(join(d, r), { recursive: true });
+    writeFileSync(
+      join(d, "index.html"),
+      '<!doctype html><html lang="en"><head><title>Tidepool</title></head><body><header><nav><a href="/">Tidepool</a><a href="/field-notes/">Field notes</a><a href="/try/">Try it</a></nav></header>' +
+        "<main><h1>Every request, accounted for</h1><h2>Watch a budget drain in real time</h2><p>Tidepool meters agent traffic before it reaches your origin and shows you the bill as it happens.</p>" +
+        '<a href="/field-notes/">Read the field notes</a></main></body></html>',
+    );
+    mkdirSync(join(d, "field-notes"));
+    writeFileSync(join(d, "field-notes", "index.html"), '<!doctype html><html lang="en"><head><title>Field notes</title></head><body><main><h1>Field notes</h1><h2>Why we meter at the edge</h2></main></body></html>');
+  });
+  try {
+    const sib = readSiblings([selfChecks, join(tmp(), "missing.json")], "own-site");
+    assert.equal(sib.siblings.length, 1);
+    assert.equal(sib.errors.length, 1);
+    const g = templateLikenessGate(own.site, "x", sib.siblings, sib.errors);
+    assert.equal(g.status, "pass", g.summary);
+    assert.ok(Number(g.metrics?.template_similarity) < 0.3, String(g.metrics?.template_similarity));
+    assert.equal(g.metrics?.max_sibling_slug, "sibling-a");
+    const d = g.details as { signature: { nav_labels: string[] }; siblings: unknown[]; sibling_errors: string[] };
+    assert.deepEqual(d.signature.nav_labels, ["tidepool", "field notes", "try it"]);
+    assert.equal(d.siblings.length, 1);
+    assert.equal(d.sibling_errors.length, 1);
+    assert.equal(validate("checks", { schema_version: 1, slug: "own-site", round: 1, sha: FAKE_SHA, deployment_url: "http://127.0.0.1/", cli_version: "0", tool_versions: {}, machine: "m", started_at: "2026-11-18T00:00:00Z", finished_at: "2026-11-18T00:00:01Z", gates: [g], all_green: true }).valid, true);
+  } finally {
+    await own.close();
+  }
+  // A sibling's own checks.json (same slug) is not compared with itself.
+  assert.equal(readSiblings([selfChecks], "sibling-a").siblings.length, 0);
+  // Similarity is symmetric and 1.0 on identical signatures.
+  const s = signatureOf([{ path: "/", html: "<nav><a>A</a></nav><h1>x</h1><p>one two three four</p>" }]);
+  assert.equal(similarity(s, s).score, 1);
+  assert.equal(templateLikenessGate(null).status, "fail");
 });
 
 test("links: passes on the template, fails on a broken internal link and a missing asset", async () => {
@@ -351,22 +498,44 @@ test("perf lock: exclusive, released, stale locks taken over, timeout reported",
   b.release();
 });
 
-test("lighthouse: median of runs, >= 90 pass, 85-89 warn, under 85 fail, errors fail", async () => {
+test("lighthouse: median of runs; performance >= 90, CLS <= 0.1, TBT <= 200 ms else fail; accessibility 85-89 warns", async () => {
   assert.equal(medianOf([97, 80, 91, 99, 90]), 91);
   assert.deepEqual([90, 89, 85, 84].map(classifyScore), ["pass", "warn", "warn", "fail"]);
+  const base0 = { performance: 95, accessibility: 95, cls: 0.05, tbt: 100 };
+  assert.equal(classifyRoute(base0).status, "pass");
+  assert.equal(classifyRoute({ ...base0, performance: 89 }).status, "fail");
+  assert.equal(classifyRoute({ ...base0, accessibility: 88 }).status, "warn");
+  assert.equal(classifyRoute({ ...base0, cls: 0.1, tbt: 200 }).status, "pass");
+  assert.equal(classifyRoute({ ...base0, cls: 0.11 }).status, "fail");
+  assert.equal(classifyRoute({ ...base0, tbt: 201 }).status, "fail");
+  assert.equal(classifyRoute({ ...base0, accessibility: 88, tbt: 250 }).status, "fail");
   const lockPath = join(tmp(), "perf.lock");
   const fixed = (runs: LhRun[]) => {
     let i = 0;
     return async () => runs[i++ % runs.length];
   };
-  const r = (performance: number, accessibility: number): LhRun => ({ performance, accessibility });
+  const r = (performance: number, accessibility: number, cls = 0.01, tbt = 50): LhRun => ({ performance, accessibility, cls, tbt, formFactor: "mobile" });
   const base = "http://127.0.0.1:1/";
   // One bad run out of five does not move the median.
   const pass = await lighthouseGate(base, ["/"], { runs: 5, lockPath, runner: fixed([r(99, 95), r(40, 95), r(98, 96), r(97, 95), r(99, 97)]) });
   assert.equal(pass.status, "pass", pass.summary);
   assert.equal(pass.metrics?.min_performance, 98);
+  assert.equal(pass.metrics?.max_cls, 0.01);
+  assert.equal(pass.metrics?.max_tbt_ms, 50);
   const warn = await lighthouseGate(base, ["/"], { runs: 5, lockPath, runner: fixed([r(99, 88)]) });
   assert.equal(warn.status, "warn");
+  const perf89 = await lighthouseGate(base, ["/"], { runs: 5, lockPath, runner: fixed([r(89, 95)]) });
+  assert.equal(perf89.status, "fail", "performance 85-89 no longer warns (contract v2)");
+  const cls = await lighthouseGate(base, ["/"], { runs: 5, lockPath, runner: fixed([r(99, 95, 0.25)]) });
+  assert.equal(cls.status, "fail");
+  assert.match(cls.summary, /CLS 0\.25 > 0\.1/);
+  const tbt = await lighthouseGate(base, ["/"], { runs: 5, lockPath, runner: fixed([r(99, 95, 0, 450)]) });
+  assert.match(tbt.summary, /TBT 450 ms > 200 ms/);
+  const desktop = await lighthouseGate(base, ["/"], { runs: 1, lockPath, runner: async () => ({ ...r(99, 99), formFactor: "desktop" }) });
+  assert.equal(desktop.status, "fail");
+  assert.match(JSON.stringify(desktop.details), /not mobile/);
+  const noCls = await lighthouseGate(base, ["/"], { runs: 1, lockPath, runner: async () => ({ performance: 99, accessibility: 99 }) });
+  assert.equal(noCls.status, "fail");
   const fail = await lighthouseGate(base, ["/", "/docs/"], { runs: 5, lockPath, runner: fixed([r(99, 95), r(80, 95)]) });
   assert.equal(fail.status, "fail");
   const err = await lighthouseGate(base, ["/"], { runs: 5, lockPath, runner: async () => ({ performance: null, accessibility: null, error: "NO_FCP" }) });
@@ -383,11 +552,13 @@ test("lighthouse: median of runs, >= 90 pass, 85-89 warn, under 85 fail, errors 
 
 // --- whole check, no browser ------------------------------------------------------------------
 
-test("gate ids that carry a named cap in score.ts are not reused by deterministic gates, except canary (decision 0003)", () => {
-  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets", "axe", "signup-flow", "lighthouse"];
+test("gate ids that carry a named cap in score.ts are not reused by deterministic gates, except canary and reduced-motion", () => {
+  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "template-likeness", "secrets", "axe", "signup-flow", "no-js-content", "lighthouse"];
   for (const id of ids) assert.ok(!(id in CAP_GATES), id);
-  // A failed canary gate is meant to carry the integrity cap (5.0), reason canary_leak.
+  // A failed canary gate carries the integrity cap (5.0), reason canary_leak (decision 0003).
   assert.deepEqual(CAP_GATES["canary"], { cap: "integrity", reason: "canary_leak" });
+  // A failed reduced-motion gate carries the quality cap (7.0), reason motion_ignores_reduced_motion (rubric v2).
+  assert.deepEqual(CAP_GATES["reduced-motion"], { cap: "quality", reason: "motion_ignores_reduced_motion" });
 });
 
 test("runCheck without a browser: browser gates fail with the reason (never pass), checks.json is valid", async () => {
@@ -404,7 +575,9 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
     for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets"])
       assert.equal(by[id].status, "pass", `${id}: ${by[id].summary}`);
     assert.equal(by.canary.status, "skip");
-    for (const id of ["axe", "signup-flow", "lighthouse"]) {
+    // The template is the template: near-identity by definition.
+    assert.equal(by["template-likeness"].status, "fail");
+    for (const id of ["axe", "signup-flow", "reduced-motion", "no-js-content", "lighthouse"]) {
       assert.equal(by[id].status, "fail", id);
       assert.match(by[id].summary, /browser unavailable/);
     }

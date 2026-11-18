@@ -4,14 +4,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser } from "playwright";
 import { validate } from "../src/lib/schemas.ts";
-import { axeGate, browserAvailable, launchBrowser, signupGate } from "../src/check/browser.ts";
+import { parse as parseYaml } from "yaml";
+import { axeGate, browserAvailable, isCloudflareRum, launchBrowser, signupGate } from "../src/check/browser.ts";
+import { contentSections, parseContentMap } from "../src/check/content.ts";
+import { noJsContentGate, reducedMotionGate } from "../src/check/motion.ts";
 import { lighthouseGate } from "../src/check/lighthouse.ts";
 import { htmlPages } from "../src/check/site.ts";
-import { edit, serveSite, stubSignup, templateRepo, tmp } from "./check-helpers.ts";
+import { TEMPLATE, edit, serveSite, stubSignup, templateRepo, tmp } from "./check-helpers.ts";
 
 const avail = await browserAvailable();
 const skip = avail.ok ? false : `SKIP(browser): ${avail.reason}`;
@@ -24,6 +27,36 @@ test.after(async () => {
 });
 
 const signupFile = (d: string) => join(d, "signup", "index.html");
+const templateSections = () => contentSections(parseContentMap(parseYaml(readFileSync(join(TEMPLATE, "greenhouse.yaml"), "utf8"))));
+
+/** Home page with extra CSS/JS and three tall sections (so the page scrolls). */
+function home(css: string, js = "", sectionClass = "reveal"): (d: string) => void {
+  const sections = ["Meter every request", "Watch the budget", "Ship the policy"]
+    .map((h, i) => `<section class="${sectionClass}" id="s${i}" style="min-height:900px"><h2>${h}</h2><p>Section ${i + 1} explains one part of the product in plain words.</p><div class="art" id="art${i}">art</div></section>`)
+    .join("");
+  return (d) =>
+    edit(join(d, "index.html"), (s) =>
+      s.replace("</head>", `<style>${css}</style></head>`).replace("</main>", `${sections}</main>${js ? `<script>${js}</script>` : ""}`),
+    );
+}
+const REVEAL_JS = `const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && e.target.classList.add("in")));
+document.querySelectorAll(".reveal").forEach((el) => io.observe(el));`;
+/** Motion done right: only with no-preference, and hidden only once a script has run. */
+const GOOD_MOTION = home(
+  `@media (prefers-reduced-motion: no-preference) {
+     .art { animation: float 3s ease-in-out infinite; }
+     html.js .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s, transform .6s; }
+     html.js .reveal.in { opacity: 1; transform: none; }
+   }
+   @keyframes float { 50% { transform: translateY(-8px); } }`,
+  `document.documentElement.classList.add("js");\n${REVEAL_JS}`,
+);
+/** Scroll reveal that starts at opacity 0 in CSS and animates regardless of reduced motion. */
+const SCROLL_REVEAL = home(
+  `.reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s, transform .6s; }
+   .reveal.in { opacity: 1; transform: none; }`,
+  REVEAL_JS,
+);
 
 test("axe: passes on the template, fails on a critical violation", { skip }, async () => {
   const ok = await serveSite();
@@ -95,6 +128,119 @@ test("signup-flow: passes on the template, fails on a stub, a final screen witho
   }
 });
 
+test("signup-flow: ignores Cloudflare's same-origin POST /cdn-cgi/rum, fails on any other non-GET", { skip }, async () => {
+  assert.equal(isCloudflareRum("POST", "https://a.example/cdn-cgi/rum?", "https://a.example"), true);
+  assert.equal(isCloudflareRum("POST", "https://b.example/cdn-cgi/rum", "https://a.example"), false);
+  assert.equal(isCloudflareRum("PUT", "https://a.example/cdn-cgi/rum", "https://a.example"), false);
+  assert.equal(isCloudflareRum("POST", "https://a.example/cdn-cgi/rumx", "https://a.example"), false);
+  const b = await getBrowser();
+  const beacon = (path: string) => (d: string) =>
+    edit(signupFile(d), (s) => s.replace("</body>", `<script>navigator.sendBeacon(${JSON.stringify(path)}, "{}");</script></body>`));
+  const rum = await serveSite(beacon("/cdn-cgi/rum"));
+  try {
+    const g = await signupGate(b, rum.server.url);
+    assert.equal(g.status, "pass", g.summary);
+    assert.match(g.summary, /ignored 1 Cloudflare Web Analytics beacon/);
+    assert.match(JSON.stringify(g.details), /POST http:\/\/127\.0\.0\.1:\d+\/cdn-cgi\/rum/);
+  } finally {
+    await rum.close();
+  }
+  const other = await serveSite(beacon("/api/track"));
+  try {
+    const g = await signupGate(b, other.server.url);
+    assert.equal(g.status, "fail");
+    assert.match(g.summary, /signup sends data: POST .*\/api\/track/);
+  } finally {
+    await other.close();
+  }
+  // The signup start comes from content.signup.
+  const moved = await serveSite((d) => {
+    const html = readFileSync(signupFile(d), "utf8");
+    rmSync(join(d, "signup"), { recursive: true });
+    mkdirSync(join(d, "try"));
+    writeFileSync(join(d, "try", "index.html"), html);
+  });
+  try {
+    assert.equal((await signupGate(b, moved.server.url)).status, "fail");
+    const g = await signupGate(b, moved.server.url, "x", 12, "/try/");
+    assert.equal(g.status, "pass", g.summary);
+    assert.match(g.summary, /from \/try\//);
+  } finally {
+    await moved.close();
+  }
+});
+
+test("reduced-motion: passes on the template and on motion gated by no-preference; fails when motion ignores it", { skip }, async () => {
+  const b = await getBrowser();
+  for (const [name, mutate] of [["template", undefined], ["gated motion", GOOD_MOTION]] as const) {
+    const s = await serveSite(mutate);
+    try {
+      const g = await reducedMotionGate(b, s.server.url);
+      assert.equal(g.status, "pass", `${name}: ${g.summary} ${JSON.stringify(g.details)}`);
+    } finally {
+      await s.close();
+    }
+  }
+  const cases: [string, (d: string) => void, RegExp][] = [
+    ["infinite animation", home(".art { animation: spin 2s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }", "", "plain"), /animation\(s\) longer than 200 ms/],
+    ["600 ms scroll reveal", SCROLL_REVEAL, /animation\(s\) longer than 200 ms/],
+    ["CSS scroll-driven", home(".art { animation: grow linear both; animation-timeline: view(); } @keyframes grow { from { transform: scale(.5); } }", "", "plain"), /scroll-linked/],
+    ["JS parallax", home("", `addEventListener("scroll", () => document.querySelectorAll(".art").forEach((el) => (el.style.transform = "translateY(" + scrollY * 0.3 + "px)")));`, "plain"), /scroll-linked/],
+    ["JS tween", home("", `const el = document.getElementById("art0"); const t0 = performance.now(); (function f(t) { el.style.opacity = String(0.5 + 0.5 * Math.sin((t - t0) / 300)); requestAnimationFrame(f); })(t0);`, "plain"), /still moving 250 ms after a scroll/],
+    ["hidden text", home(".art { opacity: 0; }", "", "plain"), /text element\(s\) in view but invisible/],
+  ];
+  for (const [name, mutate, re] of cases) {
+    const s = await serveSite(mutate);
+    try {
+      const g = await reducedMotionGate(b, s.server.url);
+      assert.equal(g.status, "fail", `${name}: ${g.summary}`);
+      assert.match(g.summary, re, name);
+    } finally {
+      await s.close();
+    }
+  }
+  assert.equal((await reducedMotionGate(null, null, "no browser")).status, "fail");
+});
+
+test("no-js-content: passes on the template and on script-gated reveals; fails on CSS opacity:0 scroll reveal", { skip }, async () => {
+  const b = await getBrowser();
+  const sections = templateSections();
+  for (const [name, mutate] of [["template", undefined], ["script-gated reveal", GOOD_MOTION]] as const) {
+    const s = await serveSite(mutate);
+    try {
+      const g = await noJsContentGate(b, s.server.url, sections);
+      assert.equal(g.status, "pass", `${name}: ${g.summary}`);
+      assert.equal(g.metrics?.sections, 8);
+    } finally {
+      await s.close();
+    }
+  }
+  const bad = await serveSite(SCROLL_REVEAL);
+  try {
+    const g = await noJsContentGate(b, bad.server.url, sections);
+    assert.equal(g.status, "fail");
+    assert.match(g.summary, /home \(\d+ text element\(s\) invisible without JavaScript/);
+    assert.equal(g.metrics?.failing, 1);
+  } finally {
+    await bad.close();
+  }
+  // An anchor that does not exist, and a page that renders its text only from a script.
+  const scripted = await serveSite((d) =>
+    edit(join(d, "pricing", "index.html"), (s) => s.replace(/<main>[\s\S]*<\/main>/, '<main id="app"></main><script>document.getElementById("app").innerHTML = "<h1>Pricing</h1><p>Free and paid.</p>";</script>')),
+  );
+  try {
+    const g = await noJsContentGate(b, scripted.server.url, [
+      { label: "pricing", path: "/pricing/", anchor: null },
+      { label: "plans", path: "/", anchor: "plans" },
+    ]);
+    assert.equal(g.status, "fail");
+    assert.match(g.summary, /pricing \(no visible text without JavaScript\)/);
+    assert.match(g.summary, /plans \(#plans not found without JavaScript\)/);
+  } finally {
+    await scripted.close();
+  }
+});
+
 test("lighthouse (real, 1 run): template passes, an inaccessible page fails", { skip }, async () => {
   const lockPath = join(tmp(), "perf.lock");
   const ok = await serveSite();
@@ -121,23 +267,29 @@ test("lighthouse (real, 1 run): template passes, an inaccessible page fails", { 
   }
 });
 
-test("greenhouse check CLI: the template is all green and writes a valid checks.json", { skip }, () => {
+test("greenhouse check CLI: the template passes every gate but template-likeness (it is the template) and writes a valid checks.json", { skip }, () => {
   const { dir, sha } = templateRepo();
   const out = join(tmp(), "checks.json");
   const r = spawnSync(process.execPath, ["cli/src/main.ts", "check", "--repo", dir, "--out", out, "--lighthouse-runs", "1"], {
     encoding: "utf8",
     env: { ...process.env, GREENHOUSE_HOME: tmp() },
   });
-  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.status, 1, r.stderr);
   const checks = JSON.parse(readFileSync(out, "utf8"));
   const v = validate("checks", checks);
   assert.ok(v.valid, v.errors.join("; "));
   assert.equal(checks.sha, sha);
-  assert.equal(checks.all_green, true);
+  assert.deepEqual(
+    checks.gates.map((g: { id: string }) => g.id),
+    ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "template-likeness", "secrets", "canary", "axe", "signup-flow", "reduced-motion", "no-js-content", "lighthouse"],
+  );
   assert.deepEqual(
     checks.gates.filter((g: { status: string }) => g.status !== "pass").map((g: { id: string; status: string }) => `${g.id}:${g.status}`),
-    ["canary:skip"],
+    ["template-likeness:fail", "canary:skip"],
   );
+  assert.equal(checks.gates.find((g: { id: string }) => g.id === "template-likeness").metrics.template_similarity, 1);
+  // Lighthouse ran on / plus the content paths (7 here, all different).
+  assert.equal(checks.gates.find((g: { id: string }) => g.id === "lighthouse").details.routes.length, 8);
 });
 
 test("greenhouse check CLI: a stub package reports its failures and exits 1", { skip }, () => {
@@ -156,6 +308,6 @@ test("greenhouse check CLI: a stub package reports its failures and exits 1", { 
   const checks = JSON.parse(readFileSync(out, "utf8"));
   assert.ok(validate("checks", checks).valid);
   const failed = checks.gates.filter((g: { status: string }) => g.status === "fail").map((g: { id: string }) => g.id);
-  assert.deepEqual(failed, ["placeholder", "canary", "signup-flow"]);
-  assert.match(r.stderr, /FAILED: placeholder, canary, signup-flow/);
+  assert.deepEqual(failed, ["placeholder", "template-likeness", "canary", "signup-flow"]);
+  assert.match(r.stderr, /FAILED: placeholder, template-likeness, canary, signup-flow/);
 });

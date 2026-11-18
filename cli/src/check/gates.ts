@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { Gate, GateStatus } from "../lib/schemas.ts";
 import { validate } from "../lib/schemas.ts";
-import { codeSamples, h1Count, htmlLang, metaRobots, references, title, visibleText } from "./html.ts";
+import { parseContentMap } from "./content.ts";
+import type { ContentMap } from "./content.ts";
+import { codeSamples, fragmentIds, h1Count, htmlLang, metaRobots, references, title, visibleText } from "./html.ts";
 import { DOCS_SECTIONS, REQUIRED_ROUTES, fetchPage, htmlPages, internalPath } from "./site.ts";
 import type { Site } from "./site.ts";
 
@@ -36,30 +38,38 @@ export interface Manifest {
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-export function readManifest(dir: string): { manifest: Manifest | null; errors: string[] } {
+const NO_CONTENT: ContentMap = { present: false, refs: [], errors: [] };
+
+/**
+ * greenhouse.yaml: the build fields (errors make `manifest` null) and, separately, the v2
+ * `content` map (its problems are in `content.errors` and do not stop the build).
+ */
+export function readManifest(dir: string): { manifest: Manifest | null; errors: string[]; content: ContentMap } {
   const file = join(dir, "greenhouse.yaml");
-  if (!existsSync(file)) return { manifest: null, errors: ["greenhouse.yaml is missing"] };
+  if (!existsSync(file)) return { manifest: null, errors: ["greenhouse.yaml is missing"], content: NO_CONTENT };
   let doc: any;
   try {
     doc = parseYaml(readFileSync(file, "utf8"));
   } catch (e) {
-    return { manifest: null, errors: [`greenhouse.yaml does not parse: ${(e as Error).message.split("\n")[0]}`] };
+    return { manifest: null, errors: [`greenhouse.yaml does not parse: ${(e as Error).message.split("\n")[0]}`], content: NO_CONTENT };
   }
   const errors: string[] = [];
-  if (!doc || typeof doc !== "object") return { manifest: null, errors: ["greenhouse.yaml is not a mapping"] };
+  if (!doc || typeof doc !== "object") return { manifest: null, errors: ["greenhouse.yaml is not a mapping"], content: NO_CONTENT };
+  const content = parseContentMap(doc);
   if (typeof doc.slug !== "string" || !SLUG_RE.test(doc.slug)) errors.push("greenhouse.yaml: slug must match ^[a-z0-9][a-z0-9-]{0,62}$");
   if (typeof doc.build?.command !== "string" || !doc.build.command.trim()) errors.push("greenhouse.yaml: build.command is required");
   if (typeof doc.build?.output !== "string" || !doc.build.output.trim()) errors.push("greenhouse.yaml: build.output is required");
   else if (doc.build.output.startsWith("/") || doc.build.output.split(/[\\/]/).includes("..")) errors.push("greenhouse.yaml: build.output must be a path inside the repo");
   if (doc.production_branch !== "main") errors.push("greenhouse.yaml: production_branch must be main");
-  if (errors.length) return { manifest: null, errors };
-  return { manifest: { slug: doc.slug, build: { command: doc.build.command, output: doc.build.output }, production_branch: "main" }, errors };
+  if (errors.length) return { manifest: null, errors, content };
+  return { manifest: { slug: doc.slug, build: { command: doc.build.command, output: doc.build.output }, production_branch: "main" }, errors, content };
 }
 
 export function packageFilesGate(dir: string | null): Gate {
   const id = "package-files";
   if (!dir) return gate(id, "fail", "cannot run: no clean checkout of the submitted sha");
-  const problems: string[] = [...readManifest(dir).errors];
+  const m = readManifest(dir);
+  const problems: string[] = [...m.errors, ...m.content.errors];
   const nonEmpty = (rel: string) => existsSync(join(dir, rel)) && statSync(join(dir, rel)).isFile() && readFileSync(join(dir, rel), "utf8").trim().length > 0;
   if (!nonEmpty("STATE.md")) problems.push("STATE.md is missing or empty");
   if (!existsSync(join(dir, "claims.yaml"))) problems.push("claims.yaml is missing");
@@ -73,9 +83,15 @@ export function packageFilesGate(dir: string | null): Gate {
   }
   const spec = loadSpecOps(dir);
   if (spec.error) problems.push(spec.error);
-  return problems.length
-    ? gate(id, "fail", `${plural(problems.length, "problem")} in the package files`, { problems: problems.length }, { problems })
-    : gate(id, "pass", `greenhouse.yaml, STATE.md, claims.yaml and ${spec.file} are present and valid`);
+  const metrics = { problems: problems.length, content_map: m.content.present };
+  if (problems.length) return gate(id, "fail", `${plural(problems.length, "problem")} in the package files`, metrics, { problems });
+  if (!m.content.present)
+    return gate(id, "warn", `package files are valid, but greenhouse.yaml has no content map (contract v2): the check falls back to the v1 route list`, metrics, {
+      fallback: "no `content` in greenhouse.yaml; routes, crawl, no-js-content, signup and lighthouse use the v1 routes",
+    });
+  return gate(id, "pass", `greenhouse.yaml (with its content map), STATE.md, claims.yaml and ${spec.file} are present and valid`, metrics, {
+    content: Object.fromEntries(m.content.refs.map((r) => [r.key, r.raw])),
+  });
 }
 
 /** operationIds from spec/openapi.yaml, or from `operationId: x` lines in spec/interface.md. */
@@ -147,17 +163,65 @@ function noSite(id: string, why: string): Gate {
   return gate(id, "fail", `cannot run: ${why}`);
 }
 
-export function routesGate(site: Site | null, why = "no site to check"): Gate {
+/** Path that should not exist on any site, for the 404 check. */
+export const NOT_FOUND_PROBE = "/greenhouse-check-404-probe/";
+
+function routeProblem(site: Site, r: string): string | null {
+  const p = site.pages.get(r);
+  const err = site.errors.find((e) => e.path === r);
+  if (err) return `${r}: ${err.error}`;
+  if (!p) return `${r}: not fetched`;
+  if (p.status !== 200) return `${r}: HTTP ${p.status}`;
+  if (!p.isHtml) return `${r}: not HTML (${p.contentType || "no content-type"})`;
+  return null;
+}
+
+async function notFoundProblem(site: Site): Promise<string | null> {
+  try {
+    const p = await fetchPage(site.base, NOT_FOUND_PROBE);
+    if (p.status !== 404) return `404 page: ${NOT_FOUND_PROBE} returned HTTP ${p.status}, not 404`;
+    if (!p.isHtml || !visibleText(p.body)) return `404 page: ${NOT_FOUND_PROBE} returned 404 without an HTML page`;
+    return null;
+  } catch (e) {
+    return `404 page: ${(e as Error).message}`;
+  }
+}
+
+/**
+ * Contract v2 (content map present): `/` and every content path return HTML with HTTP 200, every
+ * #anchor exists on its page, and unknown paths get an HTML 404 page. Without a content map:
+ * the v1 route list and the /docs/ section links, reported as `warn` (fallback).
+ */
+export async function routesGate(site: Site | null, content: ContentMap | null, why = "no site to check"): Promise<Gate> {
   const id = "routes";
   if (!site) return noSite(id, why);
   const problems: string[] = [];
+  const nf = await notFoundProblem(site);
+  if (content?.present) {
+    const p = routeProblem(site, "/");
+    if (p) problems.push(p);
+    for (const e of content.errors) problems.push(`${e} (see package-files)`);
+    const checked = new Set<string>(["/"]);
+    for (const ref of content.refs) {
+      if (!checked.has(ref.path)) {
+        checked.add(ref.path);
+        const rp = routeProblem(site, ref.path);
+        if (rp) problems.push(`content.${ref.key} ${rp}`);
+      }
+      const page = site.pages.get(ref.path);
+      if (ref.anchor && page && page.status === 200 && page.isHtml && !fragmentIds(page.body).has(ref.anchor))
+        problems.push(`content.${ref.key}: ${ref.path} has no element with id "${ref.anchor}"`);
+    }
+    if (nf) problems.push(nf);
+    const metrics = { content_paths: checked.size, anchors: content.refs.filter((r) => r.anchor).length, problems: problems.length, fallback: false };
+    const map = Object.fromEntries(content.refs.map((r) => [r.key, r.raw]));
+    return problems.length
+      ? gate(id, "fail", plural(problems.length, "route problem"), metrics, { problems, content: map })
+      : gate(id, "pass", `/ and ${plural(checked.size - 1, "content path")} return HTML, ${plural(metrics.anchors, "anchor")} found, unknown paths get a 404 page`, metrics, { content: map });
+  }
   for (const r of REQUIRED_ROUTES) {
-    const p = site.pages.get(r);
-    const err = site.errors.find((e) => e.path === r);
-    if (err) problems.push(`${r}: ${err.error}`);
-    else if (!p) problems.push(`${r}: not fetched`);
-    else if (p.status !== 200) problems.push(`${r}: HTTP ${p.status}`);
-    else if (!p.isHtml) problems.push(`${r}: not HTML (${p.contentType || "no content-type"})`);
+    const p = routeProblem(site, r);
+    if (p) problems.push(p);
   }
   const docs = site.pages.get("/docs/");
   if (docs && docs.status === 200 && docs.isHtml) {
@@ -170,9 +234,12 @@ export function routesGate(site: Site | null, why = "no site to check"): Gate {
     );
     for (const s of DOCS_SECTIONS) if (!linked.has(s)) problems.push(`/docs/ does not link to ${s}`);
   }
+  if (nf) problems.push(nf);
+  const metrics = { required: REQUIRED_ROUTES.length, problems: problems.length, fallback: true };
+  const fallback = "greenhouse.yaml has no content map (contract v2): checked the v1 route list instead";
   return problems.length
-    ? gate(id, "fail", `${plural(problems.length, "route problem")}`, { required: REQUIRED_ROUTES.length, problems: problems.length }, { problems })
-    : gate(id, "pass", `all ${REQUIRED_ROUTES.length} required routes return HTML and /docs/ links the five sections`, { required: REQUIRED_ROUTES.length });
+    ? gate(id, "fail", `${plural(problems.length, "route problem")} (v1 route list: no content map)`, metrics, { problems, fallback })
+    : gate(id, "warn", `all ${REQUIRED_ROUTES.length} v1 routes return HTML and /docs/ links the five sections, but greenhouse.yaml has no content map (fallback)`, metrics, { fallback });
 }
 
 export async function linksGate(site: Site | null, why = "no site to check"): Promise<Gate> {

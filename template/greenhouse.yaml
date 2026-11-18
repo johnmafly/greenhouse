@@ -1,7 +1,19 @@
-# Greenhouse package manifest (contract v1, docs/package-contract.md in johnmafly/greenhouse).
+# Greenhouse package manifest (contract v2, docs/package-contract.md in johnmafly/greenhouse).
 # Set slug to the project's slug from portfolio/<slug>/intake.yaml.
 slug: example-seed
 build:
   command: npm run build
   output: dist
 production_branch: main
+# Where each required piece of content lives: a site path, optionally with #anchor. All seven keys
+# are required; pages may share a path (use anchors). greenhouse check starts its crawl from / plus
+# these paths, and each must return 200 with its anchor present. The paths below are only this
+# unstyled example's; design your own information architecture and point these keys at it.
+content:
+  how_it_works: /docs/how-it-works/
+  getting_started: /docs/getting-started/
+  architecture: /docs/architecture/
+  integration: /docs/integration/
+  comparison: /docs/comparison/
+  pricing: /pricing/
+  signup: /signup/
