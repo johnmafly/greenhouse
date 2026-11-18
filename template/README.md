@@ -51,6 +51,14 @@ Motion is welcome (and scored), but `greenhouse check` requires that it degrades
   scroll-reveal content at `opacity: 0` in CSS; hide it from a script (for example add a class
   to `<html>` first) so it stays visible when the script does not run.
 
+## Product voice
+
+Write the site as a shipping product, in present tense. `product-voice` fails on hedged or
+hypothetical framing ("planned", "by design", "the proposal", "concept", "demo", "coming soon" and
+the rest of the list in `docs/package-contract.md`) in page text, meta tags, alt text, JSON-LD,
+JavaScript strings, `llms.txt` and linked text files. Where a fact cannot be sourced, cut the
+sentence rather than hedge it (decision 0005).
+
 ## Preflight
 
 ```bash

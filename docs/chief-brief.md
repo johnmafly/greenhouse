@@ -35,6 +35,19 @@ same?"
   strips. Respect `prefers-reduced-motion`, and keep content visible without JavaScript. The
   gates fail otherwise.
 
+## Write it as a shipping product (decision 0005)
+
+The owner: "I don't like to see 'by design', 'planned', 'the proposal' around the site, it keeps
+reminding me it's not a real product, I need to make it look like a real product regardless what."
+
+- Write every page, file and string in present tense, as a product people use today. No
+  language that frames it as hypothetical, planned, proposed, a concept, a demo, a prototype or
+  "by design". The `product-voice` gate fails on the banned list in
+  [package-contract.md](package-contract.md), in visible text and in what the site serves
+  (meta tags, alt text, JSON-LD, JavaScript strings, `llms.txt`, linked YAML and text files).
+- Honesty still holds: no invented customers, metrics, testimonials, logos or availability. Where
+  a fact cannot be sourced, cut the sentence rather than hedge it.
+
 ## Steps
 
 | Step | What happens | Done when |
