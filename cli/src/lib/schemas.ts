@@ -104,7 +104,7 @@ export interface Review {
   bundle_hash: string;
   scores: Record<string, number>;
   findings: Finding[];
-  flags: { invented_social_proof: boolean; reviewer_instruction: boolean };
+  flags: { invented_social_proof: boolean; reviewer_instruction: boolean; template_structure: boolean };
 }
 
 export interface Score {
@@ -128,14 +128,23 @@ export interface Score {
   decided_at: string;
 }
 
+export type CapId = "quality" | "sameness" | "integrity";
 export interface RubricDimension { id: string; name: string; weight: number; nine?: string }
 export interface Rubric {
   version: number;
   scale: { min: number; max: number; anchors?: Record<string, string> };
   dimensions: RubricDimension[];
   composite?: string;
-  caps: { id: "quality" | "integrity"; when?: string; max: number; report_to_owner?: boolean }[];
-  graduation: { composite_min: number; dimension_median_min: number; reviewer_composite_min: number; [k: string]: unknown };
+  caps: { id: CapId; when?: string; max: number; report_to_owner?: boolean }[];
+  graduation: {
+    composite_min: number;
+    dimension_median_min: number;
+    /** Dimensions that must reach focus_median_min (rubric v2: the four design-led ones). */
+    focus_dimensions?: string[];
+    focus_median_min?: number;
+    reviewer_composite_min: number;
+    [k: string]: unknown;
+  };
   panel: { reviewers: number; min_families: number; exclude_family_of_chiefs?: boolean; add_reviewer_when_dimension_spread_over?: number };
   [k: string]: unknown;
 }
@@ -205,6 +214,8 @@ function semanticErrors(name: SchemaName, doc: any): string[] {
     const sum = doc.dimensions.reduce((s: number, x: RubricDimension) => s + x.weight, 0);
     if (Math.abs(sum - 1) > 1e-9) errors.push(`/dimensions: weights sum to ${sum}, must sum to 1`);
     if (doc.scale.min >= doc.scale.max) errors.push(`/scale: min must be below max`);
+    const ids = new Set(doc.dimensions.map((x: RubricDimension) => x.id));
+    for (const f of doc.graduation.focus_dimensions ?? []) if (!ids.has(f)) errors.push(`/graduation/focus_dimensions: '${f}' is not a dimension`);
   }
   return errors;
 }

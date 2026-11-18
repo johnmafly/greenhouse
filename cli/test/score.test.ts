@@ -5,14 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { CAP_GATES, ScoreInputError, computeScore, median, scoreRoundDir, serializeScore } from "../src/lib/score.ts";
+import { CAP_GATES, ScoreInputError, computeScore, median, panelMajority, scoreRoundDir, serializeScore } from "../src/lib/score.ts";
 import type { ReviewInput, ScoreInputs } from "../src/lib/score.ts";
 import { loadRubric } from "../src/lib/rubric.ts";
 import { readDocument } from "../src/lib/schemas.ts";
 import type { Checks, Review, Submission } from "../src/lib/schemas.ts";
 
 const ROUND = join(import.meta.dirname, "fixtures", "round-01");
-const rubric = loadRubric(1);
+const rubric = loadRubric(2);
 const DIMS = rubric.dimensions.map((d) => d.id);
 const clone = <T>(x: T): T => structuredClone(x);
 
@@ -155,6 +155,60 @@ test("cap 5.0: a failed canary gate is an integrity cap (canary_leak, decision 0
   assert.deepEqual(CAP_GATES["canary"], { cap: "integrity", reason: "canary_leak" });
 });
 
+test("cap 7.0: a failed reduced-motion gate is named motion_ignores_reduced_motion (decision 0004)", () => {
+  const s = computeScore(failGate(base(), "reduced-motion"));
+  assert.deepEqual(s.caps_applied, [{ reason: "motion_ignores_reduced_motion", max: 7 }]);
+  assert.equal(s.composite_raw, 9);
+  assert.equal(s.composite, 7);
+  assert.equal(s.gates_green, false);
+  assert.deepEqual(CAP_GATES["reduced-motion"], { cap: "quality", reason: "motion_ignores_reduced_motion" });
+});
+
+/** The golden round with template_structure set by the given reviewers (by index), plus extra reviewers. */
+function sameness(flagged: number[], extra: Review[] = []): ScoreInputs {
+  const inp = clone(base());
+  inp.reviews.forEach((r, i) => (r.review.flags.template_structure = flagged.includes(i)));
+  extra.forEach((r, j) => inp.reviews.push({ file: `${4 + j}.json`, sha256: "0".repeat(64), review: r }));
+  return inp;
+}
+
+test("panelMajority: strictly more than half of the panel", () => {
+  assert.deepEqual([0, 1, 2, 3].map((n) => panelMajority(n, 3)), [false, false, true, true]);
+  assert.deepEqual([1, 2, 3, 4].map((n) => panelMajority(n, 4)), [false, false, true, true]);
+  assert.deepEqual([2, 3].map((n) => panelMajority(n, 5)), [false, true]);
+  assert.equal(panelMajority(0, 0), false);
+});
+
+test("cap 6.0: a panel majority flagging template_structure caps at the sameness cap (template_sameness)", () => {
+  const two = computeScore(sameness([0, 2]));
+  assert.deepEqual(two.caps_applied, [{ reason: "template_sameness", max: 6 }]);
+  assert.equal(two.composite_raw, 9);
+  assert.equal(two.composite, 6);
+  assert.equal(two.gates_green, true); // a panel cap, not a gate
+  assert.equal(computeScore({ ...sameness([0, 1, 2]), provisional: false }).graduation_eligible, false);
+});
+
+test("sameness cap: one reviewer of three, or two of four, is not a majority", () => {
+  const one = computeScore({ ...sameness([1]), provisional: false });
+  assert.deepEqual(one.caps_applied, []);
+  assert.equal(one.composite, 9);
+  assert.equal(one.graduation_eligible, true);
+  const fourth = clone(base().reviews[0].review);
+  fourth.reviewer = { ...fourth.reviewer, id: "r-fourth", model: "fourth-model", family: "anthropic" };
+  fourth.flags.template_structure = false;
+  assert.deepEqual(computeScore(sameness([0, 1], [fourth])).caps_applied, []);
+  fourth.flags.template_structure = true;
+  assert.deepEqual(computeScore(sameness([0, 1], [fourth])).caps_applied, [{ reason: "template_sameness", max: 6 }]);
+});
+
+test("sameness under integrity: both listed, the composite takes 5.0", () => {
+  const inp = sameness([0, 1]);
+  inp.reviews[2].review.flags.invented_social_proof = true;
+  const s = computeScore(inp);
+  assert.deepEqual(s.caps_applied, [{ reason: "invented_social_proof", max: 5 }, { reason: "template_sameness", max: 6 }]);
+  assert.equal(s.composite, 5);
+});
+
 test("several caps: all listed (lowest first), composite takes the lowest", () => {
   const inp = failGate(failGate(base(), "lighthouse-perf"), "claims");
   inp.reviews = clone(inp.reviews);
@@ -189,7 +243,7 @@ test("even reviewer count: median is the mean of the two middle scores", () => {
   assert.equal(s.dimension_medians.conviction, 8.5);
   assert.equal(s.dimension_medians.docs_buildability, 9);
   assert.equal(s.panel.length, 4);
-  assert.equal(s.composite_raw, 8.9); // 9 - 0.2 * 0.5
+  assert.equal(s.composite_raw, 8.95); // 9 - 0.1 * 0.5
 });
 
 test("ties: identical scores and a tie at the median", () => {
@@ -206,13 +260,26 @@ test("ties: identical scores and a tie at the median", () => {
 
 test("graduation: one dimension median under 8.0 blocks it even with composite >= 9", () => {
   const inp = withReviews(base(), [
-    review("a", "openai", 10, { signup_value: 7.5 }),
-    review("b", "google", 10, { signup_value: 7.5 }),
-    review("c", "xai", 10, { signup_value: 7.5 }),
+    review("a", "openai", 10, { business_signup: 7.5 }),
+    review("b", "google", 10, { business_signup: 7.5 }),
+    review("c", "xai", 10, { business_signup: 7.5 }),
   ]);
   const s = computeScore({ ...inp, provisional: false });
   assert.ok(s.composite >= 9);
   assert.equal(s.graduation_eligible, false);
+});
+
+test("graduation v2: a design-led dimension median under 8.5 blocks it; another dimension at 8.4 does not", () => {
+  for (const d of ["design_identity", "motion_interaction", "copy_voice", "distinctness"]) {
+    const inp = withReviews(base(), [review("a", "openai", 9.5, { [d]: 8.4 }), review("b", "google", 9.5, { [d]: 8.4 }), review("c", "xai", 9.5, { [d]: 8.4 })]);
+    const s = computeScore({ ...inp, provisional: false });
+    assert.ok(s.composite >= 9 && s.dimension_medians[d] >= 8, d);
+    assert.equal(s.graduation_eligible, false, d);
+  }
+  const at = (v: number) => withReviews(base(), ["openai", "google", "xai"].map((f, i) => review(`r${i}`, f, 9.5, { distinctness: v })));
+  assert.equal(computeScore({ ...at(8.5), provisional: false }).graduation_eligible, true);
+  const other = withReviews(base(), [review("a", "openai", 9.5, { conviction: 8.4 }), review("b", "google", 9.5, { conviction: 8.4 }), review("c", "xai", 9.5, { conviction: 8.4 })]);
+  assert.equal(computeScore({ ...other, provisional: false }).graduation_eligible, true);
 });
 
 test("graduation: one reviewer composite under 8.5 blocks it", () => {
@@ -224,7 +291,7 @@ test("graduation: one reviewer composite under 8.5 blocks it", () => {
 });
 
 test("graduation: composite just under 9.0 is not eligible", () => {
-  const inp = withReviews(base(), [review("a", "openai", 9, { signup_value: 8.9 }), review("b", "google", 9, { signup_value: 8.9 }), review("c", "xai", 9, { signup_value: 8.9 })]);
+  const inp = withReviews(base(), [review("a", "openai", 9, { business_signup: 8.9 }), review("b", "google", 9, { business_signup: 8.9 }), review("c", "xai", 9, { business_signup: 8.9 })]);
   const s = computeScore({ ...inp, provisional: false });
   assert.equal(s.composite, 8.995);
   assert.equal(s.graduation_eligible, false);
@@ -255,8 +322,8 @@ test("mismatched submission, checks, rubric, brief or bundle fails", () => {
   sha.checks.sha = "f".repeat(40);
   assert.throws(() => computeScore(sha), /checks\.json sha/);
   const rv = clone(base());
-  rv.reviews[0].review.rubric_version = 2;
-  assert.throws(() => computeScore(rv), /uses rubric v2/);
+  rv.reviews[0].review.rubric_version = 1;
+  assert.throws(() => computeScore(rv), /uses rubric v1, scoring with v2/);
   const brief = clone(base());
   brief.reviews[2].review.reviewer.brief_version = "brief-v2";
   assert.throws(() => computeScore(brief), /uses brief brief-v2/);
@@ -311,11 +378,11 @@ test("greenhouse score: bad input exits 1, usage errors exit 2", () => {
   const dir = mkdtempSync(join(tmpdir(), "gh-score-"));
   cpSync(ROUND, dir, { recursive: true });
   const rv = JSON.parse(readFileSync(join(dir, "reviews", "3.json"), "utf8"));
-  delete rv.scores.pricing_oss;
+  delete rv.scores.distinctness;
   writeFileSync(join(dir, "reviews", "3.json"), JSON.stringify(rv));
   const r = cli("--round-dir", dir, "--out", "-");
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /missing dimension 'pricing_oss'/);
+  assert.match(r.stderr, /missing dimension 'distinctness'/);
   assert.equal(r.stdout, "");
   assert.equal(cli("--round-dir", join(dir, "nope")).status, 1);
   assert.equal(cli().status, 2);

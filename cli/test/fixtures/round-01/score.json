@@ -3,7 +3,7 @@
   "slug": "sample",
   "round": 1,
   "sha": "3f2a9c1e5b7d4f6a8c0e2b4d6f8a0c2e4b6d8f0a",
-  "rubric_version": 1,
+  "rubric_version": 2,
   "brief_version": "brief-v1",
   "provisional": true,
   "panel": [
@@ -24,14 +24,14 @@
     }
   ],
   "dimension_medians": {
+    "design_identity": 9,
+    "motion_interaction": 9,
+    "copy_voice": 9,
+    "distinctness": 9,
     "conviction": 9,
     "docs_buildability": 9,
-    "site_craft": 9,
-    "distinctness": 9,
-    "comparison_honesty": 9,
-    "pricing_oss": 9,
     "evidence_truth": 9,
-    "signup_value": 9
+    "business_signup": 9
   },
   "reviewer_composites": {
     "r-gemini": 9.225,
@@ -46,9 +46,9 @@
   "inputs": {
     "checks_sha256": "62d45fe897f59bbf31bdd3f37366ad89c0157b4c110e8b3e10abc298c4496930",
     "reviews_sha256": {
-      "1.json": "606bc00d614bf3205a185efe559ddaeb5d4ff633cd943db7ec561611aadc8d63",
-      "2.json": "8c6a8c91e8aff7c6d81a80956ccb7b1f7626af46ecd7ea575e7524d0faef9e6f",
-      "3.json": "7271e4c0ee11b6ed71ed0a7f271245bc280677c4de6444199d6264c91aafe2ba"
+      "1.json": "000f33b3df42b873c0df1c6fbb80aaf4daddbfbb08ef67285626a0cc87850c44",
+      "2.json": "50a35baf9d7e265cbfeb498ffddec99861f74823c9569582e0fd5cc075e3fe52",
+      "3.json": "443e4abdf4d3caf22d762d998514101444797a46670b52797203f6263ed7685a"
     },
     "bundle_hash": "9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c"
   },

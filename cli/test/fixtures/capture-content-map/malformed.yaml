@@ -1,0 +1,10 @@
+# Fixture: malformed content map (missing signup, a relative path, a typo'd key).
+slug: capture-fixture
+content:
+  how_it_works: /how-it-works/
+  getting_started: docs/start/
+  architecture: /docs/architecture/
+  integration: /docs/integration/
+  comparison: /vs/
+  pricing: /#plans
+  pricng: /pricing/

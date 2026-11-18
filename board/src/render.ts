@@ -6,6 +6,7 @@ import {
 } from "./data.ts";
 import type { BoardData, JudgeTestStatus, ProjectData, RoundData } from "./data.ts";
 import type { Gate, Rubric, Severity } from "../../cli/src/lib/schemas.ts";
+import { CURRENT_RUBRIC_VERSION } from "../../cli/src/lib/rubric.ts";
 
 export const SWEEP_STALE_HOURS = 36;
 
@@ -49,15 +50,16 @@ function dateText(iso: string): string {
   return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
 }
 
+// Short labels for rubric v2 dimension ids (decision 0004); other ids fall back to the rubric's name.
 const SHORT: Record<string, string> = {
+  design_identity: "Design",
+  motion_interaction: "Motion",
+  copy_voice: "Copy",
+  distinctness: "Distinct",
   conviction: "Conviction",
   docs_buildability: "Docs",
-  site_craft: "Craft",
-  distinctness: "Distinct",
-  comparison_honesty: "Comparison",
-  pricing_oss: "Pricing",
   evidence_truth: "Evidence",
-  signup_value: "Signup",
+  business_signup: "Business",
 };
 
 function dimName(ctx: RenderContext, version: number, id: string): string {
@@ -337,7 +339,7 @@ function evidenceHtml(ctx: RenderContext, p: ProjectData, r: RoundData): string 
 function findingsHtml(ctx: RenderContext, r: RoundData): string {
   const all = r.reviews.flatMap((rf) => rf.review.findings.map((f) => ({ f, who: rf.review.reviewer })));
   if (!all.length) return `<p class="t-muted small">${r.reviews.length ? "No findings." : "Reviews not in yet."}</p>`;
-  const version = r.score?.rubric_version ?? r.reviews[0]?.review.rubric_version ?? 1;
+  const version = r.score?.rubric_version ?? r.reviews[0]?.review.rubric_version ?? CURRENT_RUBRIC_VERSION;
   return SEV_ORDER.filter((sev) => all.some((x) => x.f.severity === sev))
     .map((sev) => {
       const items = all
@@ -357,7 +359,7 @@ function findingsHtml(ctx: RenderContext, r: RoundData): string {
 function roundSection(ctx: RenderContext, p: ProjectData, r: RoundData): string {
   const s = r.score;
   const sub = r.submission;
-  const version = s?.rubric_version ?? 1;
+  const version = s?.rubric_version ?? CURRENT_RUBRIC_VERSION;
   const head = `<header class="round-head">
       <h2 id="round-${r.name}">Round ${esc(r.name)}</h2>
       <div class="chips">${s ? chip(fmt(s.composite), s.composite >= 9 ? "good" : "") : chip(isOpen(r) ? "Open" : "Pending")}${s?.provisional ? provisionalChip() : ""}${s?.caps_applied.map((c) => chip(`${c.reason} \u2264 ${c.max}`, "bad")).join("") ?? ""}</div>

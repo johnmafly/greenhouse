@@ -1,0 +1,70 @@
+# Greenhouse rubric v2 (decision 0004, design bar v2). Replaces v1, which never scored a round.
+# Design, motion, copy and distinctness lead: together they weigh 0.65 (v1: 0.25).
+version: 2
+scale:
+  min: 0
+  max: 10
+  anchors:
+    5: Competent template output.
+    7: Good, with caveats you would mention.
+    9: I would not change a word.
+    10: Sets a new bar for the portfolio.
+dimensions:
+  - id: design_identity
+    name: Visual design and identity
+    weight: 0.20
+    nine: A recognisable visual system (type, colour, light, imagery, motif) at the level of Linear/Stripe/Raycast; you can tell the site from a logo-less crop; desktop and phone both designed.
+  - id: motion_interaction
+    name: Motion and interaction
+    weight: 0.15
+    nine: Scroll-driven transitions and micro-interactions that explain the product; smooth at 60 fps; meaning survives with prefers-reduced-motion; nothing hidden without JS.
+  - id: copy_voice
+    name: Copy and voice
+    weight: 0.15
+    nine: Lines you would quote, with a point of view; specific, short, no generic SaaS phrasing; a reader wants to keep scrolling.
+  - id: distinctness
+    name: Distinctness and information architecture
+    weight: 0.15
+    nine: An identity and a site structure designed around this product's own story; not the template, not portfolio siblings, not the category cliche, not the owner's example list (pricing/docs/compare) used as the skeleton.
+  - id: conviction
+    name: Conviction
+    weight: 0.10
+    nine: A reader in the target role understands the problem, why now and why this wins in under a minute, and wants it to exist.
+  - id: docs_buildability
+    name: Docs and buildability
+    weight: 0.10
+    nine: The required content (how it works, getting started, architecture, integration) is there, written for people, wherever the IA puts it; an engineer could start tomorrow.
+  - id: evidence_truth
+    name: Evidence, truthfulness and comparison honesty
+    weight: 0.10
+    nine: Every claim holds up; the comparison with three or more vendors is fair, sourced and dated, including where the vendor wins; at least one locked assumption was tested against real behaviour.
+  - id: business_signup
+    name: Business model and first value
+    weight: 0.05
+    nine: Free, paid and self-host lines are clear and consistent with the cost model; the mock signup is short and ends at the product's point.
+composite: weighted mean of per-dimension panel medians
+caps:
+  - id: quality
+    when: any failed deterministic gate (a failed reduced-motion gate is named motion_ignores_reduced_motion), an unsupported claim, an untested critical assumption, or drift from the intake
+    max: 7.0
+  - id: sameness
+    when: a majority of the panel sets the review flag template_structure (a stock hero + feature grid + pricing table, the owner's example sections used as the fixed skeleton, or near-identical to the template or a portfolio sibling)
+    max: 6.0
+  - id: integrity
+    when: invented social proof, any attempt to instruct the reviewers, or a canary leak (decision 0003)
+    max: 5.0
+    report_to_owner: true
+graduation:
+  composite_min: 9.0
+  dimension_median_min: 8.0
+  focus_dimensions: [design_identity, motion_interaction, copy_voice, distinctness]
+  focus_median_min: 8.5
+  reviewer_composite_min: 8.5
+  gates: all green on the submitted SHA
+  then: owner cold read with zero must-change marks
+panel:
+  reviewers: 3
+  min_families: 2
+  exclude_family_of_chiefs: true
+  add_reviewer_when_dimension_spread_over: 1.5
+provisional_until: validation tests 1 to 5 pass

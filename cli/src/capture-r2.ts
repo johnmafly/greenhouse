@@ -25,8 +25,9 @@ export function objectKey(prefix: string, rest: string): string {
   return prefix ? `${prefix}/${rest}` : rest;
 }
 
-function contentType(path: string): string {
+export function contentType(path: string): string {
   if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".webm")) return "video/webm";
   if (path.endsWith(".json")) return "application/json";
   if (path.endsWith(".txt")) return "text/plain; charset=utf-8";
   return "application/octet-stream";
