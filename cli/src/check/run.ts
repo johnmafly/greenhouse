@@ -7,9 +7,11 @@ import { basename, join, resolve } from "node:path";
 import type { Browser } from "playwright";
 import { REPO_ROOT, assertValid, readDocument } from "../lib/schemas.ts";
 import type { Checks, Gate, Submission } from "../lib/schemas.ts";
+import { assetCacheGate } from "./assets.ts";
 import { axeGate, browserAvailable, launchBrowser, signupGate } from "./browser.ts";
 import { cleanBuild, git, scanCorpus } from "./build.ts";
 import { claimLinksGate } from "./claim-links.ts";
+import { contentSections, signupStart, startRoutes } from "./content.ts";
 import type { ClaimLinkOptions } from "./claim-links.ts";
 import {
   canaryGate,
@@ -26,12 +28,16 @@ import {
   specSamplesGate,
 } from "./gates.ts";
 import type { CorpusFile } from "./gates.ts";
+import { readSiblings, templateLikenessGate } from "./likeness.ts";
 import { lighthouseGate } from "./lighthouse.ts";
 import type { LhRunner } from "./lighthouse.ts";
+import { noJsContentGate, reducedMotionGate } from "./motion.ts";
 import { serveStatic } from "./serve.ts";
 import type { StaticServer } from "./serve.ts";
-import { REQUIRED_ROUTES, crawl, htmlPages, normalizeBase } from "./site.ts";
+import { crawl, htmlPages, normalizeBase } from "./site.ts";
 import type { Site } from "./site.ts";
+import { greenhouseHome } from "./lock.ts";
+import { webkitIphoneGate } from "./webkit.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -48,8 +54,12 @@ export interface CheckOptions {
   /** Test hook: replaces the real Lighthouse runner. */
   lighthouseRunner?: LhRunner;
   perfLockTimeoutMs?: number;
+  /** Other projects' checks.json files, compared in template-likeness. */
+  siblings?: string[];
   /** claim-links tuning (timeouts, 429 backoff); `now` defaults to the check start. */
   claimLinks?: ClaimLinkOptions;
+  /** Evidence directory (webkit-iphone screenshots); default <round-dir>/evidence, else ~/.greenhouse/evidence/<slug>-<sha12>. */
+  evidenceDir?: string;
   /** Progress lines (default: none). */
   log?: (line: string) => void;
 }
@@ -87,6 +97,13 @@ export function toolVersions(): Record<string, string> {
     out.chromium = `${c.browserVersion} (playwright revision ${c.revision})`;
   } catch {
     out.chromium = "unavailable";
+  }
+  try {
+    const browsers = JSON.parse(readFileSync(join(REPO_ROOT, "node_modules", "playwright-core", "browsers.json"), "utf8"));
+    const w = browsers.browsers.find((b: { name: string }) => b.name === "webkit");
+    out.webkit = `${w.browserVersion} (playwright revision ${w.revision})`;
+  } catch {
+    out.webkit = "unavailable";
   }
   const gitV = spawnSync("git", ["--version"], { encoding: "utf8" });
   out.git = gitV.status === 0 ? gitV.stdout.trim().replace(/^git version /, "") : "unavailable";
@@ -140,7 +157,7 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
   const gates: Gate[] = [];
   const push = (g: Gate) => {
     gates.push(g);
-    log(`${g.status.toUpperCase().padEnd(4)} ${g.id.padEnd(15)} ${g.summary}`);
+    log(`${g.status.toUpperCase().padEnd(4)} ${g.id.padEnd(17)} ${g.summary}`);
   };
   const dirty = git(["status", "--porcelain"], repo);
   if (!opts.sha && !submission && dirty.ok && dirty.out) log(`note: ${opts.repo} has uncommitted changes; check builds the committed sha ${sha.slice(0, 12)}`);
@@ -154,6 +171,10 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     push(build.gate);
     push(packageFilesGate(build.checkoutDir));
     push(await claimLinksGate(build.checkoutDir, { now: new Date(started_at), ...opts.claimLinks }));
+    // Contract v2 content map from the checked commit (falls back to the v1 routes without one).
+    const content = readManifest(build.checkoutDir ?? repo).content;
+    const start = startRoutes(content);
+    if (start.fallback) log("note: greenhouse.yaml has no content map; using the v1 route list");
     const slug = build.manifest?.slug ?? submission?.slug ?? readManifest(repo).manifest?.slug ?? (basename(repo).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+/, "") || "unknown");
 
     let base: string | null = null;
@@ -169,22 +190,25 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     let site: Site | null = null;
     if (base) {
       try {
-        site = await crawl(base);
+        site = await crawl(base, start.routes);
       } catch (e) {
         why = `cannot crawl ${base}: ${(e as Error).message}`;
       }
     }
-    push(routesGate(site, why));
+    push(await routesGate(site, content, why));
     push(await linksGate(site, why));
     push(pageStructureGate(site, why));
     push(placeholderGate(site, why));
     push(noindexGate(site, why));
     push(specSamplesGate(build.checkoutDir, site, why));
+    const sib = readSiblings(opts.siblings ?? [], slug);
+    push(templateLikenessGate(site, why, sib.siblings, sib.errors));
 
     const corpus: CorpusFile[] = scanCorpus(build.checkoutDir, build.outputDir);
     if (url && site) for (const p of site.pages.values()) if (p.body) corpus.push({ name: `deployed:${p.path}`, text: p.body });
     push(secretsGate(corpus));
     push(canaryGate(canaries, corpus, canaryError));
+    push(await assetCacheGate(site, why));
 
     let browserWhy = why;
     if (site) {
@@ -199,7 +223,11 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     }
     const paths = site ? htmlPages(site).map((p) => p.path) : [];
     push(await axeGate(browser, site ? base : null, paths, browserWhy));
-    push(await signupGate(browser, site ? base : null, browserWhy));
+    push(await signupGate(browser, site ? base : null, browserWhy, 12, signupStart(content)));
+    push(await reducedMotionGate(browser, site ? base : null, browserWhy));
+    push(await noJsContentGate(browser, site ? base : null, contentSections(content), browserWhy));
+    const evidenceDir = opts.evidenceDir ?? (opts.roundDir ? join(opts.roundDir, "evidence") : join(greenhouseHome(), "evidence", `${slug}-${sha.slice(0, 12)}`));
+    push(await webkitIphoneGate(site ? base : null, start.routes, why, { evidenceDir, chromium: browser }));
     if (browser) {
       await browser.close().catch(() => undefined);
       browser = null;
@@ -209,7 +237,7 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     push(
       await lighthouseGate(
         site && lhAvail.ok ? base : null,
-        opts.lighthouseRoutes ?? REQUIRED_ROUTES,
+        opts.lighthouseRoutes ?? start.routes,
         { runs: opts.lighthouseRuns, runner: opts.lighthouseRunner, lockTimeoutMs: opts.perfLockTimeoutMs },
         site ? `browser unavailable: ${(lhAvail as { reason?: string }).reason ?? "unknown"}` : why,
       ),
