@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/johnmafly/greenhouse/schemas/intake.schema.json",
+  "title": "Greenhouse intake",
+  "description": "portfolio/<slug>/intake.yaml: drafted by the Chief, approved by the owner.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "slug", "name", "status", "chief", "repo", "deployment_url", "intent",
+    "buyer", "open_source_model", "locked_assumptions", "non_goals", "budget", "exposure",
+    "sources", "approved_by_owner"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+    "name": { "type": "string", "minLength": 1 },
+    "status": {
+      "enum": ["idea", "seed", "building", "in-review", "revise", "owner-review", "graduated", "paused", "killed"]
+    },
+    "chief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason_id", "name"],
+      "properties": {
+        "reason_id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "deployment_url": {
+      "description": "null until the project's Pages project exists.",
+      "oneOf": [{ "type": "string", "format": "uri", "pattern": "^https?://" }, { "type": "null" }]
+    },
+    "intent": { "type": "string", "minLength": 1 },
+    "buyer": { "type": "string", "minLength": 1 },
+    "open_source_model": { "type": "string", "minLength": 1 },
+    "locked_assumptions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "non_goals": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_spend_usd", "time_cap_days"],
+      "properties": {
+        "rounds": { "type": "integer", "minimum": 1, "default": 6 },
+        "model_spend_usd": { "type": "number", "minimum": 0 },
+        "time_cap_days": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public", "indexable", "real_signups", "outreach"],
+      "properties": {
+        "public": { "type": "boolean" },
+        "indexable": { "type": "boolean" },
+        "real_signups": { "type": "boolean" },
+        "outreach": { "type": "boolean" }
+      }
+    },
+    "sources": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "approved_by_owner": {
+      "description": "Date the owner approved this intake, or null while it is a draft.",
+      "oneOf": [{ "type": "string", "format": "date" }, { "type": "null" }]
+    }
+  }
+}

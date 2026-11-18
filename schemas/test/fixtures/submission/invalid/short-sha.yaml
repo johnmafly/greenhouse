@@ -1,0 +1,8 @@
+schema_version: 1
+slug: botrampart
+round: 1
+repo: johnmafly/botrampart
+sha: abc123
+deployment_url: https://botrampart.pages.dev
+claims_sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+changelog: First submission.

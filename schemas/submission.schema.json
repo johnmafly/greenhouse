@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/johnmafly/greenhouse/schemas/submission.schema.json",
+  "title": "Greenhouse round submission",
+  "description": "portfolio/<slug>/rounds/NN/submission.yaml, added by greenhouse submit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "slug", "round", "repo", "sha", "deployment_url", "claims_sha256", "changelog"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+    "round": { "type": "integer", "minimum": 1 },
+    "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "deployment_url": { "type": "string", "format": "uri", "pattern": "^https?://" },
+    "claims_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "changelog": { "description": "What changed since the last round. Hidden from reviewers.", "type": "string" }
+  }
+}
