@@ -14,17 +14,30 @@ import { contentSections, parseContentMap } from "../src/check/content.ts";
 import { noJsContentGate, reducedMotionGate } from "../src/check/motion.ts";
 import { lighthouseGate } from "../src/check/lighthouse.ts";
 import { htmlPages } from "../src/check/site.ts";
+import { launchWebkit, webkitAvailable, webkitIphoneGate } from "../src/check/webkit.ts";
 import { TEMPLATE, edit, serveSite, stubSignup, templateRepo, tmp } from "./check-helpers.ts";
 
 const avail = await browserAvailable();
 const skip = avail.ok ? false : `SKIP(browser): ${avail.reason}`;
 if (skip) process.stdout.write(`# ${skip}\n`);
 
+// WebKit is checked on its own (CI installs WebKit but not Chromium): marker "SKIP(webkit)".
+const wkAvail = await webkitAvailable();
+const wkSkip = wkAvail.ok ? false : `SKIP(webkit): ${wkAvail.reason}`;
+if (wkSkip) process.stdout.write(`# ${wkSkip}\n`);
+
 let browser: Browser | null = null;
 const getBrowser = async () => (browser ??= await launchBrowser());
+let webkitBrowser: Browser | null = null;
+const getWebkit = async () => (webkitBrowser ??= await launchWebkit());
 test.after(async () => {
   await browser?.close();
+  await webkitBrowser?.close();
 });
+
+/** A strict CSP on every page (inline scripts blocked), as real sites ship it. */
+const STRICT_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:";
+const withCsp = (d: string) => edit(join(d, "_headers"), (s) => `${s}\n/*\n  Content-Security-Policy: ${STRICT_CSP}\n`);
 
 const signupFile = (d: string) => join(d, "signup", "index.html");
 const templateSections = () => contentSections(parseContentMap(parseYaml(readFileSync(join(TEMPLATE, "greenhouse.yaml"), "utf8"))));
@@ -76,6 +89,92 @@ test("axe: passes on the template, fails on a critical violation", { skip }, asy
   } finally {
     await bad.close();
   }
+});
+
+test("axe under a strict CSP (script-src 'self'): runs and passes a clean page, fails a real violation", { skip }, async () => {
+  const ok = await serveSite(withCsp);
+  try {
+    const res = await fetch(new URL("pricing/", ok.server.url));
+    assert.equal(res.headers.get("content-security-policy"), STRICT_CSP, "the fixture serves the CSP");
+    const g = await axeGate(await getBrowser(), ok.server.url, ["/", "/pricing/"]);
+    assert.equal(g.status, "pass", g.summary);
+  } finally {
+    await ok.close();
+  }
+  const bad = await serveSite((d) => {
+    withCsp(d);
+    edit(join(d, "pricing", "index.html"), (s) => s.replace("</main>", '<img src="/favicon.ico"></main>'));
+  });
+  try {
+    const g = await axeGate(await getBrowser(), bad.server.url, ["/", "/pricing/"]);
+    assert.equal(g.status, "fail", g.summary);
+    assert.doesNotMatch(g.summary, /cannot run/);
+    assert.match(JSON.stringify(g.details), /image-alt/);
+  } finally {
+    await bad.close();
+  }
+});
+
+test("webkit-iphone: the template renders in WebKit with a screenshot per route; Chromium comparison when available", { skip: wkSkip }, async () => {
+  const ok = await serveSite(withCsp);
+  const evidence = tmp();
+  try {
+    const chromium = avail.ok ? await getBrowser() : null;
+    const g = await webkitIphoneGate(ok.server.url, ["/", "/pricing/", "/docs/how-it-works/"], "x", { evidenceDir: evidence, chromium, webkit: await getWebkit() });
+    assert.equal(g.status, "pass", `${g.summary} ${JSON.stringify(g.details)}`);
+    assert.equal(g.metrics?.screenshots, 3);
+    for (const f of ["home", "pricing", "docs-how-it-works"]) assert.ok(readFileSync(join(evidence, "webkit-iphone", `${f}.png`)).length > 1000, f);
+    const d = g.details as { device: string; routes: { h1_font: unknown }[] };
+    assert.equal(d.device, "iPhone 15 Pro");
+    if (chromium) assert.ok(d.routes[0].h1_font, "computed-style comparison ran");
+  } finally {
+    await ok.close();
+  }
+});
+
+test("webkit-iphone: fails on a stylesheet that 404s, an empty stylesheet, a page error and a font that does not load", { skip: wkSkip }, async () => {
+  const cases: [string, (d: string) => void, RegExp][] = [
+    ["css 404", (d) => edit(join(d, "index.html"), (s) => s.replace("</head>", '<link rel="stylesheet" href="/assets/missing.css"></head>')), /request failed: \/assets\/missing\.css \(status 404\)/],
+    [
+      "empty css",
+      (d) => {
+        mkdirSync(join(d, "assets"), { recursive: true });
+        writeFileSync(join(d, "assets", "site.css"), "/* nothing */");
+        edit(join(d, "index.html"), (s) => s.replace("</head>", '<link rel="stylesheet" href="/assets/site.css"></head>'));
+      },
+      /stylesheet has no CSS rules: \/assets\/site\.css/,
+    ],
+    [
+      "page error",
+      (d) => {
+        mkdirSync(join(d, "assets"), { recursive: true });
+        writeFileSync(join(d, "assets", "boom.js"), "window.addEventListener('load', () => { throw new Error('boom in safari'); });");
+        edit(join(d, "index.html"), (s) => s.replace("</head>", '<script src="/assets/boom.js"></script></head>'));
+      },
+      /page error: .*boom in safari/,
+    ],
+    [
+      "font",
+      (d) => {
+        mkdirSync(join(d, "assets"), { recursive: true });
+        writeFileSync(join(d, "assets", "brand.woff2"), "not a font");
+        writeFileSync(join(d, "assets", "site.css"), "@font-face { font-family: Brand; src: url(/assets/brand.woff2) format('woff2'); } h1 { font-family: Brand, serif }");
+        edit(join(d, "index.html"), (s) => s.replace("</head>", '<link rel="stylesheet" href="/assets/site.css"></head>'));
+      },
+      /font did not load: brand \(error\)/,
+    ],
+  ];
+  for (const [name, mutate, re] of cases) {
+    const s = await serveSite(mutate);
+    try {
+      const g = await webkitIphoneGate(s.server.url, ["/"], "x", { webkit: await getWebkit() });
+      assert.equal(g.status, "fail", `${name}: ${g.summary}`);
+      assert.match(JSON.stringify(g.details), re, name);
+    } finally {
+      await s.close();
+    }
+  }
+  assert.match((await webkitIphoneGate(null, ["/"], "the build failed")).summary, /cannot run: the build failed/);
 });
 
 test("signup-flow: passes on the template, fails on a stub, a final screen without 'preview', and storage", { skip }, async () => {
@@ -281,7 +380,7 @@ test("greenhouse check CLI: the template passes every gate but template-likeness
   assert.equal(checks.sha, sha);
   assert.deepEqual(
     checks.gates.map((g: { id: string }) => g.id),
-    ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "template-likeness", "secrets", "canary", "axe", "signup-flow", "reduced-motion", "no-js-content", "lighthouse"],
+    ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "template-likeness", "secrets", "canary", "asset-cache", "axe", "signup-flow", "reduced-motion", "no-js-content", "webkit-iphone", "lighthouse"],
   );
   assert.deepEqual(
     checks.gates.filter((g: { status: string }) => g.status !== "pass").map((g: { id: string; status: string }) => `${g.id}:${g.status}`),

@@ -38,7 +38,13 @@ interface AxeViolation {
   targets: string[];
 }
 
-/** axe-core on each page: any critical violation fails, serious ones warn. */
+/**
+ * axe-core on each page: any critical violation fails, serious ones warn.
+ *
+ * axe is injected through the DevTools protocol (`page.evaluate` of its source), not as a `<script>`
+ * tag, so it runs under a strict Content-Security-Policy (`script-src 'self'`) while the page keeps
+ * that policy: axe audits the page as visitors get it, with anything the CSP blocks still blocked.
+ */
 export async function axeGate(browser: Browser | null, base: string | null, paths: string[], why = "no site to check"): Promise<Gate> {
   const id = "axe";
   if (!base) return gate(id, "fail", `cannot run: ${why}`);
@@ -51,7 +57,7 @@ export async function axeGate(browser: Browser | null, base: string | null, path
       const page = await context.newPage();
       try {
         await page.goto(new URL(path.replace(/^\//, ""), base).toString(), { waitUntil: "load", timeout: 30_000 });
-        await page.addScriptTag({ content: axe() });
+        await page.evaluate(axe());
         const v: AxeViolation[] = await page.evaluate(async () => {
           const r = await (window as any).axe.run(document, { resultTypes: ["violations"] });
           return r.violations.map((x: any) => ({ id: x.id, impact: x.impact, help: x.help, nodes: x.nodes.length, targets: x.nodes.slice(0, 5).map((n: any) => String(n.target)) }));

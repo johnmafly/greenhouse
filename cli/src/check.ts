@@ -10,12 +10,14 @@ export const CHECK_USAGE = `greenhouse check --repo <path> [--url <deployment>] 
 
 Runs every deterministic gate against a project package and writes checks.json:
   build, package-files, claim-links, deployed-sha, routes, links, page-structure, placeholder, noindex,
-  spec-samples, template-likeness, secrets, canary, axe, signup-flow, reduced-motion, no-js-content,
-  lighthouse.
+  spec-samples, template-likeness, secrets, canary, asset-cache, axe, signup-flow, reduced-motion,
+  no-js-content, webkit-iphone, lighthouse.
 
 Routes, the crawl, no-js-content, the signup start and Lighthouse follow the content map in
 greenhouse.yaml (contract v2); without one they fall back to the v1 route list (warn).
 --sibling (repeatable) compares template-likeness with another project's checks.json.
+webkit-iphone saves a fold screenshot per route under <round-dir>/evidence/webkit-iphone/
+(without --round-dir: ~/.greenhouse/evidence/<slug>-<sha12>/webkit-iphone/).
 
 The repo is built from a clean checkout of the commit (default: HEAD, or the sha in
 <round-dir>/submission.yaml). Without --url (or a submission deployment_url) the build output
