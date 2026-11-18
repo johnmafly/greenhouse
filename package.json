@@ -1,0 +1,14 @@
+{
+  "name": "greenhouse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Greenhouse control repo: rubric, schemas, CLI, template, board",
+  "engines": { "node": ">=24" },
+  "bin": { "greenhouse": "cli/src/main.ts" },
+  "scripts": {
+    "test": "node --test \"**/test/*.test.ts\"",
+    "board:build": "node board/build.ts",
+    "greenhouse": "node cli/src/main.ts"
+  }
+}

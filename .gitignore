@@ -1,0 +1,6 @@
+node_modules/
+board/dist/
+.greenhouse/
+*.log
+.env
+.DS_Store

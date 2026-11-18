@@ -1,0 +1,62 @@
+# Greenhouse rubric v1 (from implementation plan v7, section 6). Draft for the owner's edit.
+version: 1
+scale:
+  min: 0
+  max: 10
+  anchors:
+    5: Competent template output.
+    7: Good, with caveats you would mention.
+    9: I would not change a word.
+    10: Sets a new bar for the portfolio.
+dimensions:
+  - id: conviction
+    name: Conviction
+    weight: 0.20
+    nine: A reader in the target role understands the problem, why now and why this wins in under a minute, and wants it to exist.
+  - id: docs_buildability
+    name: Docs and buildability
+    weight: 0.20
+    nine: All five sections, written for people. An engineer could start building from the architecture, spec and integration guide tomorrow without asking a question.
+  - id: site_craft
+    name: Introduction site craft
+    weight: 0.15
+    nine: Hierarchy, typography, imagery and motion at the level of a funded company's site, on desktop and phone.
+  - id: distinctness
+    name: Distinctness
+    weight: 0.10
+    nine: An identity of its own, not the template, not its portfolio siblings, not the category cliche.
+  - id: comparison_honesty
+    name: Comparison honesty
+    weight: 0.10
+    nine: Three or more vendors, fair, sourced, dated, including where the vendor is the better choice.
+  - id: pricing_oss
+    name: Pricing and open-source model
+    weight: 0.10
+    nine: Free and paid lines are clear, tiers follow the cost model, self-hosting is a real path.
+  - id: evidence_truth
+    name: Evidence and truthfulness
+    weight: 0.10
+    nine: Every claim holds up; at least one locked assumption was tested against real behaviour.
+  - id: signup_value
+    name: Signup to first value
+    weight: 0.05
+    nine: The mock flow is short, believable and ends somewhere that shows the product's point.
+composite: weighted mean of per-dimension panel medians
+caps:
+  - when: any failed deterministic gate, an unsupported claim, an untested critical assumption, or drift from the intake
+    max: 7.0
+  - when: invented social proof, or any attempt to instruct the reviewers
+    max: 5.0
+    report_to_owner: true
+graduation:
+  composite_min: 9.0
+  dimension_median_min: 8.0
+  reviewer_composite_min: 8.5
+  gates: all green on the submitted SHA
+  then: owner cold read with zero must-change marks
+panel:
+  reviewers: 3
+  min_families: 2
+  exclude_family_of_chiefs: true
+  add_reviewer_when_dimension_spread_over: 1.5
+provisional_until: validation tests 1 to 5 pass
