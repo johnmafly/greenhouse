@@ -228,7 +228,7 @@ template's `/signup/` is a working example.
 
 `greenhouse check --repo <path> [--url <deployment>] [--round-dir <dir>] [--canary-file <f>]` runs
 these deterministic gates and writes `checks.json` (`schemas/checks.schema.json`) to `<round-dir>/`,
-`--out`, or `~/.greenhouse/checks/<slug>-<sha12>.json`; it exits 1 if any gate fails. A gate that cannot run reports `fail` with the reason.
+`--out`, or `~/.greenhouse/checks/<slug>-<sha12>.json`; it exits 1 if any gate fails. A gate that cannot run reports `fail` with the reason. A gate that errors mid-run (a browser context that disappears, a crashed browser) reports `fail` with `gate error: …` and the full message in `details.error`; the run goes on, relaunching the browser if it disconnected, and still writes the file.
 
 | Gate | Checks |
 |---|---|
