@@ -611,6 +611,35 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
   }
 });
 
+test("runCheck: a gate that throws is recorded as a failed gate and the run still returns checks.json", async () => {
+  const { dir } = templateRepo();
+  const prev = process.env.GREENHOUSE_SKIP_BROWSER;
+  process.env.GREENHOUSE_SKIP_BROWSER = "1";
+  try {
+    // Before the fix an exception inside a gate (here Lighthouse; live, axe's browserContext.close)
+    // escaped runCheck, so the run ended with no checks.json at all.
+    const checks = await runCheck({
+      repo: dir,
+      lighthouseRuns: 1,
+      lighthouseRunner: async () => {
+        throw new Error("browserContext.close: Protocol error (Target.disposeBrowserContext): Failed to find context with id X\n    at stack");
+      },
+    });
+    assert.equal(validate("checks", structuredClone(checks)).valid, true);
+    assert.equal(checks.all_green, false);
+    const by = Object.fromEntries(checks.gates.map((g) => [g.id, g]));
+    assert.equal(by.lighthouse.status, "fail");
+    assert.equal(by.lighthouse.class, "deterministic");
+    assert.equal(by.lighthouse.summary, "gate error: browserContext.close: Protocol error (Target.disposeBrowserContext): Failed to find context with id X");
+    assert.match(String((by.lighthouse.details as { error: string }).error), /at stack/);
+    // Every gate before it still ran and is recorded.
+    for (const id of ["build", "routes", "links", "secrets", "asset-cache", "axe", "webkit-iphone"]) assert.ok(by[id], id);
+  } finally {
+    if (prev === undefined) delete process.env.GREENHOUSE_SKIP_BROWSER;
+    else process.env.GREENHOUSE_SKIP_BROWSER = prev;
+  }
+});
+
 test("runCheck: a failed build with no --url fails every site gate with the reason", async () => {
   const { dir } = templateRepo((d) => edit(join(d, "greenhouse.yaml"), (s) => s.replace("npm run build", "exit 1")));
   const checks = await runCheck({ repo: dir, lighthouseRuns: 1 });

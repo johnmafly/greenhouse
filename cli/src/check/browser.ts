@@ -64,7 +64,8 @@ export async function axeGate(browser: Browser | null, base: string | null, path
         });
         results.push({ page: path, violations: v });
       } catch (e) {
-        await context.close();
+        // The outer finally closes the context; closing it here unguarded threw when the context
+        // was already gone ("Failed to find context"), which crashed the whole check run.
         return gate(id, "fail", `cannot run axe on ${path}: ${(e as Error).message.split("\n")[0]}`);
       } finally {
         await page.close().catch(() => undefined);
@@ -136,7 +137,7 @@ export async function signupGate(browser: Browser | null, base: string | null, w
         if (storage.session) stored.push(`${storage.session} sessionStorage item(s)`);
         if (stored.length) return await fail(`signup stores data: ${stored.join(", ")}`);
         if (sent.length) return await fail(`signup sends data: ${sent[0]}${sent.length > 1 ? ` (+${sent.length - 1})` : ""}`);
-        await context.close();
+        await context.close().catch(() => undefined);
         const note = ignored.length ? ` (ignored ${ignored.length} Cloudflare Web Analytics beacon${ignored.length === 1 ? "" : "s"})` : "";
         return gate(id, "pass", `reached the final preview screen in ${steps.length} step${steps.length === 1 ? "" : "s"} from ${start}; nothing stored or sent${note}`, { steps: steps.length }, ignored.length ? { start, steps, ignored } : { start, steps });
       }

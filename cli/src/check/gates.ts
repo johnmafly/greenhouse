@@ -18,6 +18,17 @@ export function gate(id: string, status: GateStatus, summary: string, metrics?: 
   return g;
 }
 
+/**
+ * A gate that threw instead of returning a result (a browser that went away, a protocol error):
+ * recorded as a failed gate so the run still writes checks.json with every other gate.
+ */
+export function gateError(id: string, e: unknown, cls: Gate["class"] = "deterministic"): Gate {
+  const message = e instanceof Error ? e.message : String(e);
+  const g = gate(id, "fail", `gate error: ${message.split("\n")[0].slice(0, 300)}`, undefined, { error: message.slice(0, 2000) });
+  g.class = cls;
+  return g;
+}
+
 /** Cap a list in details so checks.json stays readable. */
 function first<T>(items: T[], n = 50): T[] {
   return items.slice(0, n);

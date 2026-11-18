@@ -4,6 +4,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser } from "playwright";
@@ -70,6 +72,34 @@ const SCROLL_REVEAL = home(
    .reveal.in { opacity: 1; transform: none; }`,
   REVEAL_JS,
 );
+
+test("axe: a browser context that disappears mid-run is a failed gate, not a thrown error", { skip }, async () => {
+  // Live crash (guide run, 6c8c014): page.goto failed because the context was gone, then the
+  // error path's unguarded context.close() threw "Failed to find context" out of the gate.
+  const server = createServer((req, res) => {
+    setTimeout(() => {
+      res.setHeader("content-type", "text/html");
+      res.end(`<!doctype html><html lang="en"><head><title>t</title></head><body><main><h1>${req.url}</h1></main></body></html>`);
+    }, req.url === "/slow/" ? 3000 : 0);
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  const own = await launchBrowser();
+  try {
+    const cdp = await own.newBrowserCDPSession();
+    const dispose = setTimeout(async () => {
+      const { browserContextIds } = await cdp.send("Target.getBrowserContexts");
+      for (const id of browserContextIds) await cdp.send("Target.disposeBrowserContext", { browserContextId: id }).catch(() => undefined);
+    }, 1000);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const g = await axeGate(own, base, ["/", "/slow/", "/after/"]);
+    clearTimeout(dispose);
+    assert.equal(g.status, "fail");
+    assert.match(g.summary, /^cannot run axe on \/slow\//);
+  } finally {
+    await own.close().catch(() => undefined);
+    server.close();
+  }
+});
 
 test("axe: passes on the template, fails on a critical violation", { skip }, async () => {
   const ok = await serveSite();
