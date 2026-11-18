@@ -20,6 +20,7 @@ import { parse as parseYaml } from "yaml";
 import { validate } from "../lib/schemas.ts";
 import type { Gate, GateStatus } from "../lib/schemas.ts";
 import { BROWSER_USER_AGENT, classifyStatus, errorLabel, fresh, mapLimit } from "./claim-links.ts";
+import { parseContentRef } from "./content.ts";
 import type { ContentMap } from "./content.ts";
 import { visibleText } from "./html.ts";
 import { askBoth, judgePairProblem, request } from "./judge.ts";
@@ -378,6 +379,14 @@ export async function claimSweepGate(site: Site | null, dir: string | null, judg
 // ---------------------------------------------------------------------------------------------
 // pricing
 
+export interface CostOverage {
+  /** The billing unit after "per_", e.g. "1000" for overage_per_1000. */
+  unit: string;
+  /** What the customer pays per unit over the included amount; null when there is no overage. */
+  price: number | null;
+  /** What that unit costs us to serve; null when there is no overage. */
+  cost: number | null;
+}
 export interface CostTier {
   name: string;
   /** Price per period; null for "contact us". */
@@ -385,13 +394,64 @@ export interface CostTier {
   /** What one customer on this tier costs to serve per period. */
   cost_to_serve: number;
   includes?: string;
+  serves?: string;
+  edition?: string;
+  kind?: "self-hosted" | "cloud";
+  /** The price is a "from" price. */
+  price_is_floor?: boolean;
+  /** price - cost_to_serve, when the package states it. */
+  margin?: number;
+  /** Declared below cost. Only a free tier may be, and only with a below_cost_reason. */
+  below_cost?: boolean;
+  below_cost_reason?: string;
+  /** The cost_to_serve broken down; must add up to it. */
+  cost_lines?: Record<string, number>;
+  overages: CostOverage[];
+  /** included_* amounts and any other numeric fact about the tier (e.g. cohorts_watched). */
+  limits: Record<string, number | null>;
+}
+export interface SelfHosting {
+  /** Site path of the self-hosting guide. */
+  path: string;
+  /** Site path (optionally #anchor) where the costs of running it are shown. */
+  costs_page?: string;
+  price: number;
+  cost_to_us: number;
+  paid_by?: string;
+  below_cost?: boolean;
+  below_cost_reason?: string;
+  reference_month?: Record<string, number>;
+}
+export interface CostSource {
+  id: string;
+  /** A claims.yaml id that already sources this figure. */
+  claim?: string;
+  source_url?: string;
+  quote?: string;
+  checked?: string;
 }
 export interface CostModel {
   currency: string;
   period: string;
   self_host: boolean;
+  self_hosting?: SelfHosting;
+  /** Where the prices are shown; overrides content.pricing. */
+  pricing_page?: string;
+  /** Repo path of the script or sheet that computes the figures. */
+  workings?: string;
+  sources?: CostSource[];
+  /** The inputs the figures rest on: a value and where it comes from ("site: /own/", "ours: ..."). */
+  assumptions?: Record<string, { value: number | boolean | string; basis: string }>;
   tiers: CostTier[];
 }
+
+const COST_KEYS = ["currency", "period", "self_host", "self_hosting", "pricing_page", "workings", "sources", "assumptions", "tiers"];
+const TIER_KEYS = ["name", "price", "cost_to_serve", "includes", "serves", "edition", "kind", "price_is_floor", "margin", "below_cost", "below_cost_reason", "cost_lines"];
+const SELF_HOSTING_KEYS = ["path", "costs_page", "price", "cost_to_us", "paid_by", "below_cost", "below_cost_reason", "reference_month"];
+const SOURCE_KEYS = ["id", "claim", "source_url", "quote", "checked"];
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isText = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** greenhouse.yaml `cost_model:` (contract v2, assisted pricing gate). */
 export function readCostModel(dir: string): { model: CostModel | null; error?: string } {
@@ -406,28 +466,245 @@ export function readCostModel(dir: string): { model: CostModel | null; error?: s
   const cm = doc?.cost_model;
   if (cm === undefined || cm === null) return { model: null, error: "greenhouse.yaml has no cost_model (contract v2: the pricing gate reconciles the pricing content with it)" };
   const errs: string[] = [];
-  if (typeof cm !== "object" || Array.isArray(cm)) return { model: null, error: "cost_model must be a mapping" };
-  for (const k of Object.keys(cm)) if (!["currency", "period", "self_host", "tiers"].includes(k)) errs.push(`cost_model: unknown key ${k}`);
+  if (!isMap(cm)) return { model: null, error: "cost_model must be a mapping" };
+  for (const k of Object.keys(cm)) if (!COST_KEYS.includes(k)) errs.push(`cost_model: unknown key ${k}`);
   if (cm.currency !== undefined && !/^[A-Z]{3}$/.test(String(cm.currency))) errs.push("cost_model.currency must be a 3-letter code, e.g. USD");
-  if (cm.period !== undefined && !["month", "year"].includes(cm.period)) errs.push("cost_model.period must be month or year");
+  if (cm.period !== undefined && !["month", "year"].includes(cm.period as string)) errs.push("cost_model.period must be month or year");
   if (cm.self_host !== undefined && typeof cm.self_host !== "boolean") errs.push("cost_model.self_host must be true or false");
+  if (cm.self_host === false && cm.self_hosting !== undefined) errs.push("cost_model.self_host is false but cost_model.self_hosting is set");
+  const sitePath = (at: string, v: unknown): string | undefined => {
+    const r = parseContentRef("pricing", v);
+    if (r.error) {
+      errs.push(r.error.replace(/^content\.pricing/, at));
+      return undefined;
+    }
+    return r.ref!.raw;
+  };
+  const pricing_page = cm.pricing_page === undefined ? undefined : sitePath("cost_model.pricing_page", cm.pricing_page);
+  let workings: string | undefined;
+  if (cm.workings !== undefined) {
+    const w = cm.workings;
+    if (!isText(w) || w.startsWith("/") || w.split(/[\\/]/).includes("..")) errs.push("cost_model.workings must be a path inside the repository, e.g. costs/model.mjs");
+    else if (!existsSync(join(dir, w))) errs.push(`cost_model.workings: ${w} is not in the repository`);
+    else workings = w;
+  }
+  const belowDecl = (at: string, o: Record<string, unknown>) => {
+    if (o.below_cost !== undefined && typeof o.below_cost !== "boolean") errs.push(`${at}.below_cost must be true or false`);
+    if (o.below_cost_reason !== undefined && !isText(o.below_cost_reason)) errs.push(`${at}.below_cost_reason must be text`);
+    if (isText(o.below_cost_reason) && o.below_cost !== true) errs.push(`${at}.below_cost_reason is set but below_cost is not true`);
+  };
+  let self_hosting: SelfHosting | undefined;
+  if (cm.self_hosting !== undefined) {
+    const s = cm.self_hosting;
+    const at = "cost_model.self_hosting";
+    if (!isMap(s)) errs.push(`${at} must be a mapping`);
+    else {
+      for (const k of Object.keys(s)) if (!SELF_HOSTING_KEYS.includes(k)) errs.push(`${at}: unknown key ${k}`);
+      const path = sitePath(`${at}.path`, s.path);
+      if (path?.includes("#")) errs.push(`${at}.path must be a page, without #anchor`);
+      const costs_page = s.costs_page === undefined ? undefined : sitePath(`${at}.costs_page`, s.costs_page);
+      if (!(isNum(s.price) && s.price >= 0)) errs.push(`${at}.price must be a number >= 0`);
+      if (!(isNum(s.cost_to_us) && s.cost_to_us >= 0)) errs.push(`${at}.cost_to_us must be a number >= 0`);
+      if (s.paid_by !== undefined && !isText(s.paid_by)) errs.push(`${at}.paid_by must be text`);
+      belowDecl(at, s);
+      if (s.reference_month !== undefined && !(isMap(s.reference_month) && Object.values(s.reference_month).every(isNum)))
+        errs.push(`${at}.reference_month must map names to numbers`);
+      self_hosting = {
+        path: path ?? "",
+        ...(costs_page ? { costs_page } : {}),
+        price: Number(s.price ?? 0),
+        cost_to_us: Number(s.cost_to_us ?? 0),
+        ...(isText(s.paid_by) ? { paid_by: s.paid_by } : {}),
+        ...(typeof s.below_cost === "boolean" ? { below_cost: s.below_cost } : {}),
+        ...(isText(s.below_cost_reason) ? { below_cost_reason: s.below_cost_reason } : {}),
+        ...(isMap(s.reference_month) ? { reference_month: s.reference_month as Record<string, number> } : {}),
+      };
+    }
+  }
+  let sources: CostSource[] | undefined;
+  if (cm.sources !== undefined) {
+    if (!Array.isArray(cm.sources)) errs.push("cost_model.sources must be a list");
+    else {
+      sources = [];
+      const ids = new Set<string>();
+      const ledger = cm.sources.some((s: any) => isMap(s) && s.claim !== undefined) ? readLedger(dir) : null;
+      const ledgerIds = new Set(ledger?.claims.map((c) => c.id) ?? []);
+      for (const [i, s] of cm.sources.entries()) {
+        const at = `cost_model.sources[${i}]`;
+        if (!isMap(s)) {
+          errs.push(`${at} must be a mapping`);
+          continue;
+        }
+        for (const k of Object.keys(s)) if (!SOURCE_KEYS.includes(k)) errs.push(`${at}: unknown key ${k}`);
+        if (!isText(s.id)) errs.push(`${at}.id is required`);
+        else if (ids.has(s.id)) errs.push(`${at}.id ${s.id} is used twice`);
+        else ids.add(s.id);
+        const checked = s.checked instanceof Date ? s.checked.toISOString().slice(0, 10) : s.checked;
+        if (s.claim !== undefined) {
+          if (s.source_url !== undefined || s.quote !== undefined) errs.push(`${at}: give either claim or source_url and quote, not both`);
+          if (!isText(s.claim)) errs.push(`${at}.claim must be a claims.yaml id`);
+          else if (ledger?.error) errs.push(`${at}.claim ${s.claim}: ${ledger.error}`);
+          else if (!ledgerIds.has(s.claim)) errs.push(`${at}.claim ${s.claim} is not a claims.yaml id`);
+        } else {
+          if (!(isText(s.source_url) && /^https?:\/\/\S+$/.test(s.source_url))) errs.push(`${at} needs a claim (a claims.yaml id) or a source_url (http or https)`);
+          if (!isText(s.quote)) errs.push(`${at}.quote is required with source_url`);
+        }
+        if (checked !== undefined && !(typeof checked === "string" && /^\d{4}-\d{2}-\d{2}$/.test(checked))) errs.push(`${at}.checked must be a date, YYYY-MM-DD`);
+        sources.push({
+          id: String(s.id ?? ""),
+          ...(isText(s.claim) ? { claim: s.claim } : {}),
+          ...(isText(s.source_url) ? { source_url: s.source_url } : {}),
+          ...(isText(s.quote) ? { quote: s.quote } : {}),
+          ...(typeof checked === "string" ? { checked } : {}),
+        });
+      }
+    }
+  }
+  let assumptions: CostModel["assumptions"];
+  if (cm.assumptions !== undefined) {
+    if (!isMap(cm.assumptions)) errs.push("cost_model.assumptions must map names to { value, basis }");
+    else {
+      assumptions = {};
+      for (const [k, a] of Object.entries(cm.assumptions)) {
+        const at = `cost_model.assumptions.${k}`;
+        if (!isMap(a)) {
+          errs.push(`${at} must be { value, basis }`);
+          continue;
+        }
+        for (const ak of Object.keys(a)) if (!["value", "basis"].includes(ak)) errs.push(`${at}: unknown key ${ak}`);
+        if (!(isNum(a.value) || typeof a.value === "boolean" || isText(a.value))) errs.push(`${at}.value must be a number, true/false or text`);
+        if (!isText(a.basis)) errs.push(`${at}.basis is required: where the value comes from`);
+        assumptions[k] = { value: a.value as number | boolean | string, basis: String(a.basis ?? "") };
+      }
+    }
+  }
   if (!Array.isArray(cm.tiers) || cm.tiers.length === 0) errs.push("cost_model.tiers must list at least one tier");
   const tiers: CostTier[] = [];
   for (const [i, t] of (Array.isArray(cm.tiers) ? cm.tiers : []).entries()) {
     const at = `cost_model.tiers[${i}]`;
-    if (!t || typeof t !== "object") {
+    if (!isMap(t)) {
       errs.push(`${at} must be a mapping`);
       continue;
     }
-    for (const k of Object.keys(t)) if (!["name", "price", "cost_to_serve", "includes"].includes(k)) errs.push(`${at}: unknown key ${k}`);
-    if (typeof t.name !== "string" || !t.name.trim()) errs.push(`${at}.name is required`);
-    if (!(t.price === null || (typeof t.price === "number" && t.price >= 0))) errs.push(`${at}.price must be a number >= 0, or null for "contact us"`);
-    if (!(typeof t.cost_to_serve === "number" && t.cost_to_serve >= 0)) errs.push(`${at}.cost_to_serve must be a number >= 0`);
-    if (t.includes !== undefined && typeof t.includes !== "string") errs.push(`${at}.includes must be text`);
-    tiers.push({ name: String(t.name ?? ""), price: t.price ?? null, cost_to_serve: Number(t.cost_to_serve ?? 0), ...(typeof t.includes === "string" ? { includes: t.includes } : {}) });
+    const overages = new Map<string, CostOverage>();
+    const limits: Record<string, number | null> = {};
+    for (const [k, v] of Object.entries(t)) {
+      if (TIER_KEYS.includes(k)) continue;
+      const ov = /^overage_(cost_)?per_([a-z0-9_]+)$/.exec(k);
+      if (ov) {
+        if (!(v === null || (isNum(v) && v >= 0))) errs.push(`${at}.${k} must be a number >= 0, or null for no overage`);
+        const o = overages.get(ov[2]) ?? { unit: ov[2], price: null, cost: null };
+        if (ov[1]) o.cost = isNum(v) ? v : null;
+        else o.price = isNum(v) ? v : null;
+        overages.set(ov[2], o);
+        continue;
+      }
+      // Any other key is a numeric fact about the tier (included_sessions, cohorts_watched, ...).
+      if (/^[a-z][a-z0-9_]*$/.test(k) && (v === null || isNum(v))) limits[k] = v as number | null;
+      else errs.push(`${at}: unknown key ${k} (extra tier facts must be numbers)`);
+    }
+    for (const u of overages.keys())
+      if (!(`overage_per_${u}` in t && `overage_cost_per_${u}` in t)) errs.push(`${at}: overage_per_${u} and overage_cost_per_${u} go together`);
+    for (const o of overages.values()) if ((o.price === null) !== (o.cost === null)) errs.push(`${at}: overage_per_${o.unit} and overage_cost_per_${o.unit} must both be numbers or both null`);
+    if (!isText(t.name)) errs.push(`${at}.name is required`);
+    if (!(t.price === null || (isNum(t.price) && t.price >= 0))) errs.push(`${at}.price must be a number >= 0, or null for "contact us"`);
+    if (!(isNum(t.cost_to_serve) && t.cost_to_serve >= 0)) errs.push(`${at}.cost_to_serve must be a number >= 0`);
+    for (const k of ["includes", "serves", "edition"]) if (t[k] !== undefined && !isText(t[k])) errs.push(`${at}.${k} must be text`);
+    if (t.kind !== undefined && !["self-hosted", "cloud"].includes(t.kind as string)) errs.push(`${at}.kind must be self-hosted or cloud`);
+    if (t.price_is_floor !== undefined && typeof t.price_is_floor !== "boolean") errs.push(`${at}.price_is_floor must be true or false`);
+    if (t.margin !== undefined && !isNum(t.margin)) errs.push(`${at}.margin must be a number`);
+    belowDecl(at, t);
+    if (t.cost_lines !== undefined && !(isMap(t.cost_lines) && Object.values(t.cost_lines).every((v) => isNum(v) && v >= 0)))
+      errs.push(`${at}.cost_lines must map names to numbers >= 0`);
+    tiers.push({
+      name: String(t.name ?? ""),
+      price: (t.price as number | null | undefined) ?? null,
+      cost_to_serve: Number(t.cost_to_serve ?? 0),
+      ...(isText(t.includes) ? { includes: t.includes } : {}),
+      ...(isText(t.serves) ? { serves: t.serves } : {}),
+      ...(isText(t.edition) ? { edition: t.edition } : {}),
+      ...(t.kind === "self-hosted" || t.kind === "cloud" ? { kind: t.kind } : {}),
+      ...(typeof t.price_is_floor === "boolean" ? { price_is_floor: t.price_is_floor } : {}),
+      ...(isNum(t.margin) ? { margin: t.margin } : {}),
+      ...(typeof t.below_cost === "boolean" ? { below_cost: t.below_cost } : {}),
+      ...(isText(t.below_cost_reason) ? { below_cost_reason: t.below_cost_reason } : {}),
+      ...(isMap(t.cost_lines) ? { cost_lines: t.cost_lines as Record<string, number> } : {}),
+      overages: [...overages.values()],
+      limits,
+    });
   }
   if (errs.length) return { model: null, error: errs.join("; ") };
-  return { model: { currency: cm.currency ?? "USD", period: cm.period ?? "month", self_host: cm.self_host ?? false, tiers } };
+  return {
+    model: {
+      currency: (cm.currency as string) ?? "USD",
+      period: (cm.period as string) ?? "month",
+      self_host: (cm.self_host as boolean | undefined) ?? self_hosting !== undefined,
+      ...(self_hosting ? { self_hosting } : {}),
+      ...(pricing_page ? { pricing_page } : {}),
+      ...(workings ? { workings } : {}),
+      ...(sources ? { sources } : {}),
+      ...(assumptions ? { assumptions } : {}),
+      tiers,
+    },
+  };
+}
+
+const cents = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * What the cost model itself gets wrong, before any page is read: tiers below their cost to serve
+ * (a free tier only with below_cost and a reason), overages below their unit cost, stated margins
+ * and cost lines that do not add up.
+ */
+export function costModelProblems(m: CostModel): { problems: string[]; acquisition: { name: string; cost: number; reason: string }[] } {
+  const problems: string[] = [];
+  const acquisition: { name: string; cost: number; reason: string }[] = [];
+  const unit = `${m.currency}/${m.period}`;
+  const belowRule = (label: string, price: number, cost: number, o: { below_cost?: boolean; below_cost_reason?: string }) => {
+    const below = cents(cost) > cents(price);
+    if (below && price > 0) problems.push(`${label} sells below its cost to serve (${price} < ${cost} ${unit})${o.below_cost ? "; only a free tier may be declared below cost" : ""}`);
+    else if (below && o.below_cost === true && o.below_cost_reason) acquisition.push({ name: label, cost, reason: o.below_cost_reason });
+    else if (below) problems.push(`${label} is free but costs ${cost} ${unit} to serve; declare below_cost: true with a below_cost_reason (an acquisition cost)`);
+    else if (o.below_cost === true) problems.push(`${label} declares below_cost: true but its price ${price} covers its cost to serve ${cost}`);
+  };
+  for (const t of m.tiers) {
+    const label = `tier "${t.name}"`;
+    if (t.price !== null) belowRule(label, t.price, t.cost_to_serve, t);
+    else if (t.below_cost === true) problems.push(`${label} has no fixed price and cannot be declared below cost`);
+    for (const o of t.overages)
+      if (o.price !== null && o.cost !== null && o.cost > o.price) problems.push(`${label}: overage per ${o.unit} sells below its cost (${o.price} < ${o.cost} ${m.currency})`);
+    if (t.margin !== undefined && t.price !== null && Math.abs(t.margin - (t.price - t.cost_to_serve)) > 0.011)
+      problems.push(`${label}: margin ${t.margin} is not price - cost_to_serve (${cents(t.price - t.cost_to_serve)})`);
+    if (t.cost_lines) {
+      const lines = Object.values(t.cost_lines);
+      const sum = lines.reduce((a, b) => a + b, 0);
+      // Each line is rounded to the cent, so allow half a cent of drift per line.
+      if (Math.abs(sum - t.cost_to_serve) > 0.005 * lines.length + 0.005)
+        problems.push(`${label}: cost_lines add up to ${cents(sum)}, not cost_to_serve ${t.cost_to_serve}`);
+    }
+  }
+  if (m.self_hosting) belowRule("self-hosting", m.self_hosting.price, m.self_hosting.cost_to_us, m.self_hosting);
+  return { problems, acquisition };
+}
+
+async function pageText(site: Site, raw: string): Promise<{ text?: string; html?: string; error?: string }> {
+  const r = parseContentRef("pricing", raw);
+  if (!r.ref) return { error: `${raw} is not a site path` };
+  let html = site.pages.get(r.ref.path)?.body;
+  if (html === undefined) {
+    try {
+      const p = await fetchPage(site.base, r.ref.path);
+      if (p.status === 200) html = p.body;
+      else return { error: `${r.ref.path} answers HTTP ${p.status}` };
+    } catch (e) {
+      return { error: `${r.ref.path} did not load: ${(e as Error).message.split("\n")[0]}` };
+    }
+  }
+  if (html === undefined) return { error: `${r.ref.path} did not load` };
+  if (!r.ref.anchor) return { html, text: visibleText(html) };
+  const section = elementById(html, r.ref.anchor);
+  if (section === null) return { error: `#${r.ref.anchor} is not on ${r.ref.path}` };
+  return { html: section, text: visibleText(section) };
 }
 
 export async function pricingGate(site: Site | null, dir: string | null, content: ContentMap | null, judges: Judge[], why = "no site to check"): Promise<Gate> {
@@ -438,60 +715,73 @@ export async function pricingGate(site: Site | null, dir: string | null, content
   if (pair) return agate(id, "fail", `cannot run: ${pair}`);
   const cm = readCostModel(dir);
   if (!cm.model) return agate(id, "fail", `cannot run: ${cm.error}`);
-  const ref = content?.refs.find((r) => r.key === "pricing");
-  const path = ref?.path ?? "/pricing/";
-  let html = site.pages.get(path)?.body;
-  if (html === undefined) {
-    try {
-      const p = await fetchPage(site.base, path);
-      if (p.status === 200) html = p.body;
-    } catch {
-      /* reported below */
-    }
-  }
-  if (html === undefined) return agate(id, "fail", `cannot run: pricing content ${path} did not load`);
-  const section = ref?.anchor ? elementById(html, ref.anchor) : html;
-  if (section === null) return agate(id, "fail", `cannot run: #${ref?.anchor} is not on ${path}`);
-  const text = visibleText(section);
+  const model = cm.model;
+  const where = model.pricing_page ?? content?.refs.find((r) => r.key === "pricing")?.raw ?? "/pricing/";
+  const page = await pageText(site, where);
+  if (page.text === undefined) return agate(id, "fail", `cannot run: pricing content ${page.error}`);
+  const text = page.text;
   const amounts = moneyAmounts(text);
-  const problems: string[] = [];
-  const tiers = cm.model.tiers.map((t) => {
+  const { problems, acquisition } = costModelProblems(model);
+  const shown = (n: number) => amounts.some((a) => Math.abs(a - n) < 0.0005);
+  const tiers = model.tiers.map((t) => {
     const named = new RegExp(`(^|[^\\p{L}\\p{N}])${t.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "iu").test(text);
     const priced =
-      t.price === null
-        ? /\b(contact|custom|talk to|get a quote|quote)\b/i.test(text)
-        : t.price === 0
-          ? amounts.includes(0) || /\bfree\b/i.test(text)
-          : amounts.includes(t.price);
+      t.price === null ? /\b(contact|custom|talk to|get a quote|quote)\b/i.test(text) : t.price === 0 ? shown(0) || /\bfree\b/i.test(text) : shown(t.price);
     if (!named) problems.push(`tier "${t.name}" is not on the pricing content`);
     if (!priced) problems.push(`tier "${t.name}": price ${t.price === null ? "contact us" : t.price} is not on the pricing content`);
-    const belowCost = t.price !== null && t.price > 0 && t.cost_to_serve > t.price;
-    if (belowCost) problems.push(`tier "${t.name}" sells below its cost to serve (${t.price} < ${t.cost_to_serve} ${cm.model!.currency}/${cm.model!.period})`);
-    return { name: t.name, price: t.price, cost_to_serve: t.cost_to_serve, margin: t.price === null ? null : Math.round((t.price - t.cost_to_serve) * 100) / 100, on_page: named, price_on_page: priced };
+    const overages = t.overages.filter((o) => o.price !== null).map((o) => ({ ...o, on_page: shown(o.price!) }));
+    for (const o of overages) if (!o.on_page) problems.push(`tier "${t.name}": overage ${o.price} per ${o.unit} is not on the pricing content`);
+    return {
+      name: t.name,
+      price: t.price,
+      cost_to_serve: t.cost_to_serve,
+      margin: t.price === null ? null : cents(t.price - t.cost_to_serve),
+      below_cost: t.price !== null && cents(t.cost_to_serve) > cents(t.price),
+      on_page: named,
+      price_on_page: priced,
+      ...(overages.length ? { overages } : {}),
+    };
   });
-  const selfHostShown = /self[- ]?host/i.test(text);
-  if (cm.model.self_host && !selfHostShown) problems.push("cost_model.self_host is true but the pricing content does not show the self-hosting path");
-  const known = new Set(cm.model.tiers.map((t) => t.price).filter((p): p is number => p !== null));
-  const unreconciled = [...new Set(amounts.filter((a) => !known.has(a)))];
+  // The self-hosting path: named on the pricing content, or linked from it.
+  const sh = model.self_hosting;
+  const linked = (p: string | undefined) => !!p && !!page.html && new RegExp(`href\\s*=\\s*["']?(?:https?://[^/"']+)?${p.split("#")[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(page.html);
+  const selfHostShown = /self[- ]?host/i.test(text) || linked(sh?.path) || linked(sh?.costs_page);
+  if (model.self_host && !selfHostShown) problems.push("the cost model has a self-hosting path but the pricing content neither shows nor links to it");
+  if (sh) {
+    const guide = await pageText(site, sh.path);
+    if (guide.text === undefined) problems.push(`self_hosting.path: ${guide.error}`);
+    if (sh.costs_page) {
+      const costs = await pageText(site, sh.costs_page);
+      if (costs.text === undefined) problems.push(`self_hosting.costs_page: ${costs.error}`);
+    }
+  }
+  const known = new Set<number>();
+  for (const t of model.tiers) {
+    if (t.price !== null) known.add(t.price);
+    for (const o of t.overages) if (o.price !== null) known.add(o.price);
+  }
+  if (sh) known.add(sh.price);
+  const unreconciled = [...new Set(amounts.filter((a) => ![...known].some((k) => Math.abs(k - a) < 0.0005)))];
   const verdict = await askBoth(
     judges,
     request(
       "pricing",
-      "Does the pricing text contradict the cost model: a tier, price, usage limit, inclusion, discount or self-hosting promise that the cost model does not contain or that would be sold below its cost to serve? Amounts not in the cost model are listed in unreconciled_amounts; answer yes if any of them is a price the cost model cannot support.",
-      { pricing_text: text.slice(0, 6000), cost_model: cm.model, unreconciled_amounts: unreconciled },
+      "Does the pricing text contradict the cost model: a tier, price, usage limit, inclusion, discount or self-hosting promise that the cost model does not contain or that would be sold below its cost to serve? A free tier the cost model declares below_cost with a below_cost_reason is an accepted acquisition cost, not a contradiction. Amounts not in the cost model are listed in unreconciled_amounts; answer yes if any of them is a price the cost model cannot support.",
+      { pricing_text: text.slice(0, 6000), cost_model: { ...model, sources: undefined }, unreconciled_amounts: unreconciled },
     ),
   );
   const judged: GateStatus = verdict.outcome === "yes" ? "fail" : verdict.outcome === "split" ? "warn" : "pass";
   const status = problems.length ? "fail" : judged;
-  const metrics = { tiers: tiers.length, problems: problems.length, unreconciled_amounts: unreconciled.length, judges_contradiction: verdict.outcome };
-  const details = { content: ref?.raw ?? path, cost_model: cm.model, tiers, self_host_shown: selfHostShown, unreconciled_amounts: unreconciled, problems, votes: votesOf(verdict) };
+  const metrics = { tiers: tiers.length, problems: problems.length, acquisition_tiers: acquisition.length, unreconciled_amounts: unreconciled.length, judges_contradiction: verdict.outcome };
+  const details = { content: where, cost_model: model, tiers, acquisition, self_host_shown: selfHostShown, unreconciled_amounts: unreconciled, problems, votes: votesOf(verdict) };
+  const free = acquisition.length ? `; ${acquisition.map((a) => `${a.name} below cost as acquisition (${a.cost} ${model.currency}/${model.period})`).join(", ")}` : "";
   const summary = problems.length
     ? `${plural(problems.length, "problem")}: ${problems.slice(0, 3).join("; ")}`
     : judged === "fail"
       ? "both judges: the pricing content contradicts the cost model"
       : judged === "warn"
-        ? `tiers and prices match the cost model; the judges split on a contradiction`
-        : `${plural(tiers.length, "tier")} on ${ref?.raw ?? path} match the cost model, none below cost; judges found no contradiction`;
+        ? `tiers and prices match the cost model; the judges split on a contradiction${free}`
+        : `${plural(tiers.length, "tier")} on ${where} match the cost model, no paid price below cost${free}; judges found no contradiction`;
   return agate(id, status, summary, metrics, details);
 }
 

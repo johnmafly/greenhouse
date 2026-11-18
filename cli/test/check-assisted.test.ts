@@ -263,10 +263,11 @@ function costDir(costModel: unknown): string {
   return d;
 }
 
+const rawCost = (): any => parseYaml(readFileSync(join(TEMPLATE, "greenhouse.yaml"), "utf8")).cost_model;
+
 test("pricing: the template reconciles; missing tiers, wrong prices, below-cost tiers and contradictions fail", async () => {
-  const cm = readCostModel(TEMPLATE);
-  assert.ok(cm.model, cm.error);
-  assert.deepEqual(cm.model.tiers.map((t) => t.name), ["Free", "Hosted"]);
+  const cm = { model: rawCost() };
+  assert.deepEqual(readCostModel(TEMPLATE).model?.tiers.map((t) => t.name), ["Free", "Hosted"]);
   const t = await serveSite();
   try {
     const ok = await pricingGate(t.site, TEMPLATE, templateContent(), pair(() => "no"));
@@ -310,6 +311,95 @@ test("pricing: the template reconciles; missing tiers, wrong prices, below-cost 
   } finally {
     await anchored.close();
   }
+});
+
+// The richer shape BotRampart's Chief shipped (botrampart-site#8): editions, cost lines, overages,
+// numeric limits, a self-hosting block, workings, sources and assumptions.
+const richCost = (over: (cm: any) => void = () => undefined): string => {
+  const cm: any = {
+    currency: "USD",
+    period: "month",
+    workings: "costs/model.mjs",
+    pricing_page: "/pricing/",
+    tiers: [
+      { name: "Free", edition: "Cloud", kind: "cloud", price: 0, included_sessions: 10000, overage_per_1000: null, overage_cost_per_1000: null, cohorts_watched: 0, cost_to_serve: 12.39, margin: -12.39, below_cost: true, below_cost_reason: "Acquisition: what a free site costs us. Paused at the cap.", cost_lines: { platform: 5, shard: 4.15, model: 3.24 } },
+      { name: "Hosted", edition: "Cloud", kind: "cloud", price: 20, included_sessions: 100000, overage_per_1000: 0.3, overage_cost_per_1000: 0.02, cohorts_watched: 5, cost_to_serve: 6, margin: 14, below_cost: false, cost_lines: { card_fees: 0.88, support: 5.12 }, serves: "hosted by us" },
+    ],
+    self_hosting: { path: "/docs/getting-started/", costs_page: "/pricing/", price: 0, cost_to_us: 0, paid_by: "the person running it", reference_month: { core: 8.03 } },
+    sources: [
+      { id: "cf", claim: "cf-price" },
+      { id: "do", source_url: "https://developers.cloudflare.com/durable-objects/platform/pricing/", quote: "400,000 GB-s / month", checked: "2026-11-18" },
+    ],
+    assumptions: { sessions_per_instance: { value: 500000, basis: "site: /docs/architecture/" }, worst_case: { value: true, basis: "ours" } },
+  };
+  over(cm);
+  return ledgerDir([claim("cf-price", "https://example.com/p")], (d) => {
+    writeFileSync(join(d, "greenhouse.yaml"), JSON.stringify({ ...parseYaml(readFileSync(join(TEMPLATE, "greenhouse.yaml"), "utf8")), cost_model: cm }));
+    mkdirSync(join(d, "costs"));
+    writeFileSync(join(d, "costs", "model.mjs"), "export {};\n");
+  });
+};
+
+test("pricing: a free tier below cost passes only when declared with a reason; paid tiers and overages below cost fail", async () => {
+  const withOverage = (d: string) => edit(join(d, "pricing", "index.html"), (s) => s.replace("$20 a month", "$20 a month, then $0.30 per 1,000 sessions"));
+  const t = await serveSite(withOverage);
+  const gate = (dir: string) => pricingGate(t.site, dir, templateContent(), pair());
+  try {
+    // The Chief's shape parses whole and reconciles; the free tier is an accepted acquisition cost.
+    const rich = readCostModel(richCost());
+    assert.ok(rich.model, rich.error ?? "");
+    assert.deepEqual(rich.model.tiers[1].overages, [{ unit: "1000", price: 0.3, cost: 0.02 }]);
+    assert.deepEqual(rich.model.tiers[1].limits, { included_sessions: 100000, cohorts_watched: 5 });
+    const ok = await gate(richCost());
+    assert.equal(ok.status, "pass", ok.summary);
+    assert.equal(ok.metrics?.acquisition_tiers, 1);
+    assert.match(ok.summary, /Free.*below cost as acquisition \(12\.39 USD\/month\)/);
+
+    const fails = async (over: (cm: any) => void, re: RegExp) => {
+      const g = await gate(richCost(over));
+      assert.equal(g.status, "fail", `${re}: ${g.summary}`);
+      assert.match((((g.details as { problems?: string[] } | undefined)?.problems) ?? [g.summary]).join("\n"), re);
+    };
+    // A below-cost free tier with no reason, or not declared at all.
+    await fails((cm) => delete cm.tiers[0].below_cost_reason, /"Free" is free but costs 12\.39 USD\/month to serve; declare below_cost: true with a below_cost_reason/);
+    await fails((cm) => (delete cm.tiers[0].below_cost_reason, (cm.tiers[0].below_cost = false)), /declare below_cost: true/);
+    // A paid tier below cost fails even when declared.
+    await fails((cm) => Object.assign(cm.tiers[1], { cost_to_serve: 30, margin: -10, cost_lines: { support: 30 }, below_cost: true, below_cost_reason: "growth" }), /"Hosted" sells below its cost to serve \(20 < 30 USD\/month\); only a free tier may be declared below cost/);
+    // An overage below its unit cost.
+    await fails((cm) => (cm.tiers[1].overage_cost_per_1000 = 0.4), /"Hosted": overage per 1000 sells below its cost \(0\.3 < 0\.4 USD\)/);
+    // Arithmetic the model states must add up.
+    await fails((cm) => (cm.tiers[1].margin = 15), /margin 15 is not price - cost_to_serve \(14\)/);
+    await fails((cm) => (cm.tiers[1].cost_lines.support = 9), /cost_lines add up to 9\.88, not cost_to_serve 6/);
+    // below_cost: true on a tier its price covers.
+    await fails((cm) => (cm.tiers[1].below_cost = true), /"Hosted" declares below_cost: true but its price 20 covers/);
+    // Self-hosting below cost and a self-hosting guide that is not on the site.
+    await fails((cm) => (cm.self_hosting.cost_to_us = 3), /self-hosting is free but costs 3 USD\/month/);
+    await fails((cm) => (cm.self_hosting.path = "/selfhost/"), /self_hosting\.path: \/selfhost\/ answers HTTP 404/);
+  } finally {
+    await t.close();
+  }
+  // An overage price the pricing content does not show.
+  const plain = await serveSite();
+  try {
+    const g = await pricingGate(plain.site, richCost(), templateContent(), pair());
+    assert.equal(g.status, "fail");
+    assert.match(g.summary, /overage 0\.3 per 1000 is not on the pricing content/);
+  } finally {
+    await plain.close();
+  }
+  // The shape stays strict: unknown keys, non-numeric extras, unpaired overages, bad sources and assumptions.
+  const err = (over: (cm: any) => void) => readCostModel(richCost(over)).error ?? "";
+  assert.match(err((cm) => (cm.extra = 1)), /cost_model: unknown key extra/);
+  assert.match(err((cm) => (cm.tiers[1].note = "x")), /tiers\[1\]: unknown key note \(extra tier facts must be numbers\)/);
+  assert.match(err((cm) => delete cm.tiers[1].overage_cost_per_1000), /overage_per_1000 and overage_cost_per_1000 go together/);
+  assert.match(err((cm) => (cm.tiers[1].overage_cost_per_1000 = null)), /must both be numbers or both null/);
+  assert.match(err((cm) => (cm.tiers[0].below_cost = false)), /below_cost_reason is set but below_cost is not true/);
+  assert.match(err((cm) => (cm.sources[0].claim = "nope")), /sources\[0\]\.claim nope is not a claims\.yaml id/);
+  assert.match(err((cm) => delete cm.sources[1].quote), /sources\[1\]\.quote is required/);
+  assert.match(err((cm) => (cm.workings = "costs/missing.mjs")), /workings: costs\/missing\.mjs is not in the repository/);
+  assert.match(err((cm) => (cm.pricing_page = "https://x.test/p")), /cost_model\.pricing_page: .* is not a site path/);
+  assert.match(err((cm) => delete cm.assumptions.worst_case.basis), /assumptions\.worst_case\.basis is required/);
+  assert.match(err((cm) => (cm.self_host = false)), /self_host is false but cost_model\.self_hosting is set/);
 });
 
 // --- social-proof -----------------------------------------------------------------------------

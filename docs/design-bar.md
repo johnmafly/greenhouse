@@ -42,7 +42,8 @@ architecture (15%). To graduate, each of the four needs a panel median of at lea
 - **Nothing is hidden without JavaScript.** Content that fades in on scroll must be visible when JS
   is off: start it visible and let JS opt it into the animation. The `no-js-content` gate checks this.
 - Reviewers see a scroll recording and 12-frame strips of `/` and of your signup start, on desktop
-  and phone, plus a reduced-motion strip. Design the scroll, not just the first screen.
+  and phone, plus a reduced-motion strip, and the first screen of every page as Safari on an iPhone
+  renders it (WebKit). Design the scroll, not just the first screen.
 
 ## 4. Write with a voice
 
