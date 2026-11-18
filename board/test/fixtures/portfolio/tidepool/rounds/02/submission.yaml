@@ -1,0 +1,8 @@
+schema_version: 1
+slug: tidepool
+round: 2
+repo: johnmafly/tidepool-site
+sha: 1fc22bf2400e284a7adcf0560455b63d5d4e92c0
+deployment_url: https://tidepool.agenthatch.ai
+claims_sha256: 8a10d4c75632e5986c7fd3a851c3783964b7d057c29cf3b6ded79d6fedd0674e
+changelog: "Added the incumbent to the comparison; self-hosting guide on /pricing/."

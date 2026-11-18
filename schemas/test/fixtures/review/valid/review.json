@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "reviewer": {
+    "id": "r1",
+    "model": "gpt-5",
+    "family": "openai",
+    "brief_version": "brief-v1"
+  },
+  "rubric_version": 1,
+  "bundle_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "scores": {
+    "conviction": 8,
+    "docs_buildability": 8,
+    "site_craft": 8,
+    "distinctness": 8,
+    "comparison_honesty": 8,
+    "pricing_oss": 8,
+    "evidence_truth": 8,
+    "signup_value": 8
+  },
+  "findings": [
+    {
+      "id": "f1",
+      "dimension": "conviction",
+      "severity": "should",
+      "title": "Why-now is buried",
+      "detail": "The why-now argument appears only on /docs/how-it-works/.",
+      "evidence": [
+        "bundle:text/index.txt#L12"
+      ]
+    }
+  ],
+  "flags": {
+    "invented_social_proof": false,
+    "reviewer_instruction": false
+  }
+}

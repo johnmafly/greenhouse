@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/johnmafly/greenhouse/schemas/rubric.schema.json",
+  "title": "Greenhouse rubric",
+  "description": "rubric/rubric-vN.yaml. Weights must sum to 1 (checked by the rubric loader).",
+  "type": "object",
+  "required": ["version", "scale", "dimensions", "caps", "graduation", "panel"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "scale": {
+      "type": "object",
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "anchors": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "weight"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "name": { "type": "string", "minLength": 1 },
+          "weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+          "nine": { "type": "string" }
+        }
+      }
+    },
+    "composite": { "type": "string" },
+    "caps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "max"],
+        "properties": {
+          "id": { "enum": ["quality", "integrity"] },
+          "when": { "type": "string" },
+          "max": { "type": "number", "minimum": 0 },
+          "report_to_owner": { "type": "boolean" }
+        }
+      }
+    },
+    "graduation": {
+      "type": "object",
+      "required": ["composite_min", "dimension_median_min", "reviewer_composite_min"],
+      "properties": {
+        "composite_min": { "type": "number" },
+        "dimension_median_min": { "type": "number" },
+        "reviewer_composite_min": { "type": "number" }
+      }
+    },
+    "panel": {
+      "type": "object",
+      "required": ["reviewers", "min_families"],
+      "properties": {
+        "reviewers": { "type": "integer", "minimum": 1 },
+        "min_families": { "type": "integer", "minimum": 1 },
+        "exclude_family_of_chiefs": { "type": "boolean" },
+        "add_reviewer_when_dimension_spread_over": { "type": "number" }
+      }
+    }
+  }
+}

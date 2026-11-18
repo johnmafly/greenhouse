@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "slug": "tidepool",
+  "round": 1,
+  "sha": "261d4021d5b49af1ea6318cfaf95c92fcff02b0e",
+  "deployment_url": "https://tidepool.agenthatch.ai",
+  "cli_version": "0.1.0",
+  "tool_versions": {
+    "node": "24.11.0",
+    "playwright": "1.65.1"
+  },
+  "machine": "agenthatchminisg",
+  "started_at": "2026-11-10T09:00:00Z",
+  "finished_at": "2026-11-10T09:40:00Z",
+  "gates": [
+    {
+      "id": "build",
+      "class": "deterministic",
+      "status": "pass",
+      "summary": "Clean-checkout build succeeded"
+    },
+    {
+      "id": "links",
+      "class": "deterministic",
+      "status": "pass",
+      "summary": "No broken internal links (212 checked)"
+    },
+    {
+      "id": "lighthouse",
+      "class": "deterministic",
+      "status": "warn",
+      "summary": "Median performance 88 on mobile",
+      "metrics": {
+        "performance": 88
+      }
+    },
+    {
+      "id": "claims",
+      "class": "assisted",
+      "status": "pass",
+      "summary": "All 14 ledger claims supported"
+    }
+  ],
+  "all_green": true,
+  "bundle_hash": "798ad3c477c4c9b1818ef20063272fde7c50f459d0b320574da02809367c67ce"
+}

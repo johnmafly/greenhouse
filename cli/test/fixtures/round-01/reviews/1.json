@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "reviewer": {
+    "id": "r-openai",
+    "model": "gpt-5",
+    "family": "openai",
+    "brief_version": "brief-v1"
+  },
+  "rubric_version": 1,
+  "bundle_hash": "9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c",
+  "scores": {
+    "conviction": 9,
+    "docs_buildability": 9,
+    "site_craft": 9,
+    "distinctness": 9,
+    "comparison_honesty": 9,
+    "pricing_oss": 9,
+    "evidence_truth": 9,
+    "signup_value": 8
+  },
+  "findings": [
+    {
+      "id": "r-openai-f1",
+      "dimension": "signup_value",
+      "severity": "could",
+      "title": "Signup could end closer to the product's point",
+      "detail": "The last screen summarises settings instead of showing a blocked bot.",
+      "evidence": [
+        "bundle:screens/signup-3.png"
+      ]
+    }
+  ],
+  "flags": {
+    "invented_social_proof": false,
+    "reviewer_instruction": false
+  }
+}

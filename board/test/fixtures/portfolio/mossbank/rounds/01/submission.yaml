@@ -1,0 +1,8 @@
+schema_version: 1
+slug: mossbank
+round: 1
+repo: johnmafly/mossbank-site
+sha: f21a60427b7857e514c8abd3eebc918874a55a75
+deployment_url: https://mossbank.agenthatch.ai
+claims_sha256: b8670c28e8113d6271c7ad77d69750efbdfbd302a80e39c887f36c890d2de266
+changelog: "First submission."

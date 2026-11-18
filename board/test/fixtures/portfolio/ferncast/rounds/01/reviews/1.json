@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "reviewer": {
+    "id": "r-openai",
+    "model": "gpt-5",
+    "family": "openai",
+    "brief_version": "brief-v1"
+  },
+  "rubric_version": 1,
+  "bundle_hash": "9b25201b3d1b04c9c49443ae6fea8ffc94f43123104c5c870c2af54a29140ef5",
+  "scores": {
+    "conviction": 8,
+    "docs_buildability": 8,
+    "site_craft": 7,
+    "distinctness": 8,
+    "comparison_honesty": 7,
+    "pricing_oss": 8,
+    "evidence_truth": 7,
+    "signup_value": 8
+  },
+  "findings": [
+    {
+      "id": "r-openai-f1",
+      "evidence": [],
+      "dimension": "docs_buildability",
+      "severity": "must",
+      "title": "Integration guide links are broken",
+      "detail": "Three links in the integration guide return 404."
+    }
+  ],
+  "flags": {
+    "invented_social_proof": false,
+    "reviewer_instruction": false
+  }
+}

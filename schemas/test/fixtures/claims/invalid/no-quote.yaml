@@ -1,0 +1,6 @@
+claims:
+  - id: c1
+    claim: Credential stuffing is the top attack against login endpoints.
+    where: [/, /docs/comparison/]
+    source_url: https://example.com/report-2026
+    checked: 2026-11-18

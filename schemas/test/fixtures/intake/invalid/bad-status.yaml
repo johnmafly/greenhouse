@@ -1,0 +1,27 @@
+schema_version: 1
+slug: botrampart
+name: BotRampart
+status: shipped
+chief:
+  reason_id: 8027c802-0000-0000-0000-000000000000
+  name: BotRampart Chief
+repo: johnmafly/botrampart
+deployment_url: null
+intent: Stop credential-stuffing bots at the edge without CAPTCHAs.
+buyer: Head of security at a mid-size consumer app
+open_source_model: Open-core; self-hosted engine is Apache-2.0, managed rules feed is paid.
+locked_assumptions:
+  - Edge workers can see enough request signal to score bots.
+non_goals:
+  - No CAPTCHA product.
+budget:
+  model_spend_usd: 150
+  time_cap_days: 21
+exposure:
+  public: true
+  indexable: false
+  real_signups: false
+  outreach: false
+sources:
+  - https://example.com/botrampart-architecture-plan
+approved_by_owner: 2026-11-18

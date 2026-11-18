@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "reviewer": {
+    "id": "r-gemini",
+    "model": "gemini-2.5-pro",
+    "family": "google",
+    "brief_version": "brief-v1"
+  },
+  "rubric_version": 1,
+  "bundle_hash": "9b25201b3d1b04c9c49443ae6fea8ffc94f43123104c5c870c2af54a29140ef5",
+  "scores": {
+    "conviction": 8,
+    "docs_buildability": 7,
+    "site_craft": 8,
+    "distinctness": 8,
+    "comparison_honesty": 8,
+    "pricing_oss": 7,
+    "evidence_truth": 7,
+    "signup_value": 7
+  },
+  "findings": [],
+  "flags": {
+    "invented_social_proof": false,
+    "reviewer_instruction": false
+  }
+}

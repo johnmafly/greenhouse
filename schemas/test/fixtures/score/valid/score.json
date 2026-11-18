@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "slug": "botrampart",
+  "round": 1,
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "rubric_version": 1,
+  "brief_version": "brief-v1",
+  "provisional": true,
+  "panel": [
+    {
+      "id": "r1",
+      "model": "gpt-5",
+      "family": "openai"
+    }
+  ],
+  "dimension_medians": {
+    "conviction": 8,
+    "docs_buildability": 8,
+    "site_craft": 8,
+    "distinctness": 8,
+    "comparison_honesty": 8,
+    "pricing_oss": 8,
+    "evidence_truth": 8,
+    "signup_value": 8
+  },
+  "reviewer_composites": {
+    "r1": 8
+  },
+  "composite_raw": 8,
+  "caps_applied": [],
+  "composite": 8,
+  "gates_green": true,
+  "graduation_eligible": false,
+  "inputs": {
+    "checks_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reviews_sha256": {
+      "1.json": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "bundle_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "cost_usd": null,
+  "decided_at": "2026-11-18T10:20:00Z"
+}

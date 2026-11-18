@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "reviewer": {
+    "id": "r-grok",
+    "model": "grok-4",
+    "family": "xai",
+    "brief_version": "brief-v1"
+  },
+  "rubric_version": 1,
+  "bundle_hash": "7f9d8dd586dac3a84de14f30d817d5372c2c56b6b921782fc0adb66278222f85",
+  "scores": {
+    "conviction": 9,
+    "docs_buildability": 8,
+    "site_craft": 9,
+    "distinctness": 9,
+    "comparison_honesty": 9,
+    "pricing_oss": 9,
+    "evidence_truth": 9,
+    "signup_value": 9
+  },
+  "findings": [],
+  "flags": {
+    "invented_social_proof": false,
+    "reviewer_instruction": false
+  }
+}

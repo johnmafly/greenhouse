@@ -1,0 +1,8 @@
+schema_version: 1
+slug: tidepool
+round: 1
+repo: johnmafly/tidepool-site
+sha: 261d4021d5b49af1ea6318cfaf95c92fcff02b0e
+deployment_url: https://tidepool.agenthatch.ai
+claims_sha256: ef06becaf89e8a3a094966b0a3a59301df45aad9ab53247fc3b0f5a74389a2bd
+changelog: "First submission."
