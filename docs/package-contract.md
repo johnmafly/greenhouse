@@ -63,27 +63,75 @@ content:            # each value: a site path, optionally with #anchor
 ## Cost model: `cost_model:` in `greenhouse.yaml`
 
 The `pricing` assisted gate reconciles the pricing content with the project's cost model, declared
-next to the content map:
+next to the content map. Only `currency`, `period` and `tiers` (with `name`, `price` and
+`cost_to_serve` per tier) are required; the rest is optional, and every key is checked: an unknown
+key fails the gate.
 
 ```yaml
 cost_model:
-  currency: USD        # 3-letter code (default USD)
-  period: month        # month or year (default month)
-  self_host: true      # the pricing content must show the self-hosting path
-  tiers:               # every tier on the pricing content, in order
+  currency: USD              # 3-letter code (default USD)
+  period: month              # month or year (default month)
+  pricing_page: /own/#editions   # where the prices are shown; default content.pricing
+  workings: costs/model.mjs  # repo path of the script or sheet that computes the figures
+  tiers:                     # every tier on the pricing content
     - name: Community
-      price: 0         # per period; null for "contact us"
-      cost_to_serve: 0 # what one customer on this tier costs you per period
-      includes: Self-hosted, everything in the open-source edition.   # optional, for the judges
+      price: 0               # per period; null for "contact us"
+      cost_to_serve: 0       # what one customer on this tier costs you per period
+      edition: Community     # optional text: edition, includes, serves
+      kind: self-hosted      # self-hosted or cloud
+    - name: Free
+      price: 0
+      cost_to_serve: 12.39
+      below_cost: true       # only a free tier, and only with a reason
+      below_cost_reason: "Acquisition: what a free site costs us. Paused at the cap."
+      included_sessions: 10000   # any other numeric key is a limit the judges check the page against
+      cost_lines: { platform_minimum: 5, shard_duration: 4.15, decision_model: 3.24 }   # must add up to cost_to_serve
     - name: Starter
       price: 49
-      cost_to_serve: 11
+      price_is_floor: false  # true for a "from" price
+      cost_to_serve: 33.57
+      margin: 15.43          # optional; must equal price - cost_to_serve
+      overage_per_1000: 0.3        # paired with its cost; both null for no overage
+      overage_cost_per_1000: 0.02113
+  self_hosting:              # optional; implies self_host: true
+    path: /build/            # the self-hosting guide; must load
+    costs_page: /own/#selfhost   # optional; must load
+    price: 0
+    cost_to_us: 0
+    paid_by: the person running it
+    reference_month: { core: 8.03 }   # optional numbers
+  sources:                   # where the unit costs come from
+    - id: cf-workers-price
+      claim: cf-workers-price      # a claims.yaml id, or:
+    - id: cf-do-price
+      source_url: https://developers.cloudflare.com/durable-objects/platform/pricing/
+      quote: "400,000 GB-s / month, + $12.50/million GB-s"
+      checked: "2026-11-18"
+  assumptions:               # the inputs the figures rest on
+    sessions_per_instance: { value: 500000, basis: "site: /build/inside/#core" }
 ```
 
-Every tier's name and price must appear in the `content.pricing` section (only inside its
-`#anchor` when it has one), no paid tier may sell below its `cost_to_serve`, and both judges must
-find no contradiction between the pricing text and the cost model. Amounts on the pricing content
-that match no tier are listed for the judges and the panel.
+`self_host: true` without a `self_hosting` block still works (the pricing content must show the
+self-hosting path).
+
+The gate fails when:
+- a tier's name or price, or a numeric overage price, is not on the pricing content (only inside
+  its `#anchor` when it has one);
+- a paid tier, or an overage, sells below its cost to serve. Declaring `below_cost` does not
+  excuse a paid tier;
+- a free tier (or free self-hosting) costs more than 0 to serve without `below_cost: true` and a
+  non-empty `below_cost_reason` (an acquisition cost). With both, it passes, and the gate reports
+  it as an acquisition cost;
+- `below_cost: true` is set on a tier whose price covers its cost, a stated `margin` is not
+  `price - cost_to_serve`, or `cost_lines` do not add up to `cost_to_serve` (half a cent of
+  rounding allowed per line);
+- the pricing content neither shows nor links to the self-hosting path, or `self_hosting.path` /
+  `costs_page` does not load;
+- both judges find a contradiction between the pricing text and the cost model.
+
+Amounts on the pricing content that match no tier or overage are listed for the judges and the
+panel. The `sources` quotes are checked for shape here, not fetched; ledger facts on the site go
+through `claims`.
 
 ## Rules checked by gates
 
@@ -167,7 +215,7 @@ the panel sees it. A claim passes only when both judges say its quote supports i
 |---|---|---|---|
 | `claims` | Every `source_url` fetched with a browser User-Agent (429 retried once) and archived under `--archive-dir` (default `<round-dir>/sources/`, else `~/.greenhouse/archive/<slug>-<sha12>/`: one file per body, named by its sha256, plus `index.json`). The `quote` must be in the source verbatim (up to whitespace, quote marks, dashes and case; `...` marks an omission); pages that need JavaScript are rendered in the browser. | Does the quote support the claim exactly as written? | `unsupported_claim` (7.0) |
 | `claim-sweep` | Sentences on every page with a figure, a comparison, a superlative or research, not covered by a ledger claim. | Is this a claim about the outside world that needs a public source? | failed gate (7.0) |
-| `pricing` | Tiers, prices, cost to serve and the self-hosting path against `cost_model:` (above). | Does the pricing text contradict the cost model? | failed gate (7.0) |
+| `pricing` | Tiers, prices, overages, cost to serve (a free tier below cost only with `below_cost_reason`) and the self-hosting path against `cost_model:` (above). | Does the pricing text contradict the cost model? | failed gate (7.0) |
 | `social-proof` | Testimonials, attributions, logo walls, customer counts, ratings and press mentions not backed by the ledger. | Is this presented as real social proof for this product? | `invented_social_proof` (5.0) |
 | `reviewer-instruction` | Pages, `/llms.txt`, `/robots.txt` and similar files: instructions to models or reviewers in comments, attributes, scripts or hidden text fail outright; the same words in visible text, or text that mentions reviewers or models, go to the judges. | Is this addressed to an AI reviewer or judge rather than to visitors? | `reviewer_instruction` (5.0) |
 | `hidden-text` | Start pages fetched as a browser and as Googlebot, GPTBot and ClaudeBot: different content fails (cloaking). In the browser, text laid out but invisible (off-screen, clipped, tiny or same colour as its background); clipped or off-screen labels up to 80 characters are screen-reader text and allowed. | Is this hidden text there for machines rather than people? | failed gate (7.0) |

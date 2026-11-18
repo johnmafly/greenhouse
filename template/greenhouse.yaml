@@ -19,7 +19,10 @@ content:
   signup: /signup/
 # What each pricing tier costs and what it costs to serve one customer on it (assisted pricing gate:
 # every tier's name and price must be on the pricing content, no paid tier below its cost to
-# serve, and the self-hosting path shown when self_host is true). Example numbers only.
+# serve, and the self-hosting path shown when self_host is true). A free tier that costs you
+# something to serve needs below_cost: true and a below_cost_reason. The full format, with
+# overages, cost lines, self_hosting, sources and assumptions, is in docs/package-contract.md in
+# johnmafly/greenhouse. Example numbers only.
 cost_model:
   currency: USD
   period: month
