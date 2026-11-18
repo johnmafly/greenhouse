@@ -47,7 +47,7 @@ caps:
     when: any failed deterministic gate, an unsupported claim, an untested critical assumption, or drift from the intake
     max: 7.0
   - id: integrity
-    when: invented social proof, or any attempt to instruct the reviewers
+    when: invented social proof, any attempt to instruct the reviewers, or a canary leak (decision 0003)
     max: 5.0
     report_to_owner: true
 graduation:
