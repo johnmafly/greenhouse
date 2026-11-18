@@ -130,6 +130,24 @@ function sourceText(f: SourceFetch): { text: string | null; kind: string } {
   return { text: null, kind: ct.split(";")[0] || "unknown" };
 }
 
+// Bot-protection interstitials served with a 2xx status instead of the source. Each marker is
+// specific to one vendor's challenge page, and is only consulted when the quote is not found, so a
+// real article that loads a vendor's script still passes when it carries the quote.
+const CHALLENGE_MARKERS: [string, RegExp][] = [
+  ["Imperva", /Pardon Our Interruption|_Incapsula_Resource|\bincap_ses_/i],
+  ["Cloudflare", /<title>\s*Just a moment\.\.\.\s*<\/title>|Attention Required! \| Cloudflare|\/cdn-cgi\/challenge-platform\/|\bcf-chl-/i],
+  ["DataDome", /captcha-delivery\.com/i],
+  ["HUMAN", /px-captcha|_pxCaptcha/],
+  ["AWS WAF", /awsWafCookieDomainList|AwsWafIntegration/],
+  ["Akamai", /<title>\s*Access Denied\s*<\/title>[\s\S]*errors\.edgesuite\.net/i],
+];
+
+/** The vendor whose bot challenge this HTML body is, or null. */
+export function challengeVendor(html: string): string | null {
+  for (const [vendor, re] of CHALLENGE_MARKERS) if (re.test(html)) return vendor;
+  return null;
+}
+
 function extFor(contentType: string): string {
   const ct = contentType.toLowerCase();
   if (ct.includes("html")) return "html";
@@ -197,7 +215,7 @@ export async function claimsGate(dir: string | null, judges: Judge[], opts: Clai
 
   // One fetch per distinct URL, archived once.
   const urls = [...new Set(ledger.claims.map((c) => c.source_url))];
-  const fetched = new Map<string, { f: SourceFetch; text: string | null; kind: string; archive: ArchiveEntry }>();
+  const fetched = new Map<string, { f: SourceFetch; text: string | null; kind: string; challenge: string | null; archive: ArchiveEntry }>();
   if (opts.archiveDir) mkdirSync(opts.archiveDir, { recursive: true });
   await mapLimit(urls, opts.concurrency ?? 6, async (url) => {
     const f = await fetcher(url);
@@ -214,6 +232,7 @@ export async function claimsGate(dir: string | null, judges: Judge[], opts: Clai
     fetched.set(url, {
       f,
       ...st,
+      challenge: st.kind === "html" && f.body ? challengeVendor(f.body.toString("utf8")) : null,
       archive: { url, final_url: f.finalUrl, status: f.status, content_type: f.contentType, fetched_at: new Date().toISOString(), sha256, file, bytes: f.body?.length ?? 0 },
     });
   });
@@ -222,8 +241,9 @@ export async function claimsGate(dir: string | null, judges: Judge[], opts: Clai
 
   const results = await mapLimit(ledger.claims, opts.concurrency ?? 4, async (c) => {
     const src = fetched.get(c.source_url)!;
-    const cls = classifyStatus(src.f.status);
+    let cls = classifyStatus(src.f.status);
     let quote_found: boolean | null = null;
+    let challenge: string | null = null;
     let verifiedBy: "static" | "rendered" | null = null;
     if (src.text !== null) {
       quote_found = quoteFound(src.text, c.quote);
@@ -235,6 +255,12 @@ export async function claimsGate(dir: string | null, judges: Judge[], opts: Clai
           verifiedBy = "rendered";
         }
       }
+      // A bot challenge in place of the source: refused automation, not a missing quote.
+      if (quote_found === false && src.challenge) {
+        quote_found = null;
+        cls = "refused";
+        challenge = src.challenge;
+      }
     }
     const base = {
       id: c.id,
@@ -243,6 +269,7 @@ export async function claimsGate(dir: string | null, judges: Judge[], opts: Clai
       archived: src.archive.file,
       quote_found,
       ...(verifiedBy ? { quote_verified_in: verifiedBy } : {}),
+      ...(challenge ? { challenge } : {}),
     };
     if (cls === "broken") return { ...base, class: "source_broken" as ClaimClass, outcome: "fail" as GateStatus, why: `source returned ${src.f.status}` };
     if (quote_found === false) return { ...base, class: "quote_not_found" as ClaimClass, outcome: "fail" as GateStatus, why: "the quote is not in the source" };
@@ -264,7 +291,7 @@ export async function claimsGate(dir: string | null, judges: Judge[], opts: Clai
         ...base,
         class: "source_unverifiable" as ClaimClass,
         outcome: (ok ? "warn" : "fail") as GateStatus,
-        why: `${cls === "refused" ? `source refused automation (${src.f.status})` : `cannot read the source (${src.kind})`}: the quote could not be checked; ${ok ? "checked within 30 days, spot-check the archive-less source" : "and `checked` is missing or older than 30 days"}`,
+        why: `${challenge ? `source answered with a bot challenge (${challenge}, ${src.f.status})` : cls === "refused" ? `source refused automation (${src.f.status})` : `cannot read the source (${src.kind})`}: the quote could not be checked; ${ok ? "checked within 30 days, spot-check the archive-less source" : "and `checked` is missing or older than 30 days"}`,
         votes,
       };
     }
