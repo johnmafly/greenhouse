@@ -1,0 +1,9 @@
+---
+# Spike submission for issue #2 (judge trigger test). Not a real round; this PR is closed unmerged.
+slug: spike
+round: 0
+repo: johnmafly/greenhouse
+sha: "0000000000000000000000000000000000000000"
+deployment_url: "https://example.invalid/"
+change_log: "spike: judge trigger test"
+---
