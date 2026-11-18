@@ -88,13 +88,29 @@ export function sha256(data: string | Buffer): string {
 
 const byString = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
+/**
+ * `greenhouse check --url` records the URL as parsed (`new URL(u).href`), which adds a trailing
+ * slash to a bare origin, while a submission may omit it. Both name the same deployment.
+ */
+function sameDeployment(a: string, b: string): boolean {
+  const norm = (u: string) => {
+    try {
+      return new URL(u).href.replace(/\/+$/, "");
+    } catch {
+      return u;
+    }
+  };
+  return norm(a) === norm(b);
+}
+
 function checkConsistency(inp: ScoreInputs): void {
   const { rubric, submission: sub, checks, reviews } = inp;
   const fail = (m: string) => {
     throw new ScoreInputError(m);
   };
   for (const k of ["slug", "round", "sha", "deployment_url"] as const) {
-    if (sub[k] !== checks[k]) fail(`checks.json ${k} '${checks[k]}' does not match submission '${sub[k]}'`);
+    const same = k === "deployment_url" ? sameDeployment(sub[k], checks[k]) : sub[k] === checks[k];
+    if (!same) fail(`checks.json ${k} '${checks[k]}' does not match submission '${sub[k]}'`);
   }
   if (reviews.length === 0) fail("no reviews");
   if (reviews.length < rubric.panel.reviewers) {
