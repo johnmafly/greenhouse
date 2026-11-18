@@ -26,7 +26,7 @@ import { CONTENT_KEYS, contentSections, parseContentMap, signupStart, startRoute
 import { codeSamples, fragmentIds, h1Count, headingOutline, htmlLang, navLabels, references, title, visibleText } from "../src/check/html.ts";
 import { classifyRoute, classifyScore, lighthouseGate, medianOf } from "../src/check/lighthouse.ts";
 import { jaccard, readSiblings, signatureOf, similarity, templateLikenessGate, templateSignature } from "../src/check/likeness.ts";
-import { REQUIRED_ROUTES } from "../src/check/site.ts";
+import { REQUIRED_ROUTES, htmlPages } from "../src/check/site.ts";
 import { assetCacheGate, cachePolicy, cssAssets, fingerprinted, jsImports, pageAssets } from "../src/check/assets.ts";
 import type { LhRun } from "../src/check/lighthouse.ts";
 import { LockTimeoutError, acquireLock } from "../src/check/lock.ts";
@@ -328,6 +328,26 @@ test("template-likeness: the template itself fails (>= 0.8), a redesigned site p
   assert.equal(templateLikenessGate(null).status, "fail");
 });
 
+test("links: Cloudflare's /cdn-cgi/ rewrites (email obfuscation) are ignored; a real broken link beside them still fails", async () => {
+  const cf = '<p><a href="/cdn-cgi/l/email-protection#a1c2cdc4">Email us</a></p>';
+  const ok = await serveSite((d) => edit(page(d, "docs/api"), (s) => s.replace("</main>", `${cf}</main>`)));
+  try {
+    const g = await linksGate(ok.site);
+    assert.equal(g.status, "pass", JSON.stringify(g));
+    assert.deepEqual((g.details as { ignored_host_rewrites: string[] }).ignored_host_rewrites, ["/cdn-cgi/l/email-protection"]);
+  } finally {
+    await ok.close();
+  }
+  const bad = await serveSite((d) => edit(page(d, "docs/api"), (s) => s.replace("</main>", `${cf}<p><a href="/docs/gone/">Gone</a></p></main>`)));
+  try {
+    const g = await linksGate(bad.site);
+    assert.equal(g.status, "fail");
+    assert.deepEqual((g.details as { broken: { url: string }[] }).broken.map((b) => b.url), ["/docs/gone/"]);
+  } finally {
+    await bad.close();
+  }
+});
+
 test("links: passes on the template, fails on a broken internal link and a missing asset", async () => {
   const ok = await serveSite();
   try {
@@ -412,7 +432,7 @@ test("noindex: passes on the template, fails without _headers and without the ro
     const g = noindexGate(bad.site);
     assert.equal(g.status, "fail");
     const problems = (g.details as { problems: string[] }).problems;
-    assert.equal(problems.filter((p) => /X-Robots-Tag/.test(p)).length, 9);
+    assert.equal(problems.filter((p) => /X-Robots-Tag/.test(p)).length, htmlPages(bad.site).length);
     assert.deepEqual(problems.filter((p) => /meta/.test(p)), ['/pricing/: no <meta name="robots" content="noindex">']);
   } finally {
     await bad.close();
@@ -426,7 +446,7 @@ test("spec-samples: passes on the template, fails on an unknown operationId, war
   try {
     const g = specSamplesGate(TEMPLATE, ok.site);
     assert.equal(g.status, "pass", g.summary);
-    assert.equal(g.metrics?.samples, 2);
+    assert.equal(g.metrics?.samples, 5);
   } finally {
     await ok.close();
   }
@@ -439,7 +459,7 @@ test("spec-samples: passes on the template, fails on an unknown operationId, war
     await bad.close();
   }
   const none = await serveSite((d) => {
-    for (const p of ["docs/integration", "docs/getting-started"]) edit(page(d, p), (s) => s.replace(/ data-op="[^"]*"/, ""));
+    for (const p of ["docs/integration", "docs/getting-started", "docs/api"]) edit(page(d, p), (s) => s.replace(/ data-op="[^"]*"/g, ""));
   });
   try {
     assert.equal(specSamplesGate(TEMPLATE, none.site).status, "warn");
@@ -554,7 +574,7 @@ test("lighthouse: median of runs; performance >= 90, CLS <= 0.1, TBT <= 200 ms e
 // --- whole check, no browser ------------------------------------------------------------------
 
 test("gate ids that carry a named cap in score.ts are not reused by deterministic gates, except canary and reduced-motion", () => {
-  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "template-likeness", "secrets", "asset-cache", "axe", "signup-flow", "no-js-content", "webkit-iphone", "lighthouse"];
+  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "docs", "template-likeness", "secrets", "asset-cache", "axe", "signup-flow", "no-js-content", "webkit-iphone", "lighthouse"];
   for (const id of ids) assert.ok(!(id in CAP_GATES), id);
   // A failed canary gate carries the integrity cap (5.0), reason canary_leak (decision 0003).
   assert.deepEqual(CAP_GATES["canary"], { cap: "integrity", reason: "canary_leak" });
@@ -573,7 +593,7 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
     assert.equal(checks.slug, "example-seed");
     assert.equal(checks.all_green, false);
     const by = Object.fromEntries(checks.gates.map((g) => [g.id, g]));
-    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets", "asset-cache"])
+    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "docs", "secrets", "asset-cache"])
       assert.equal(by[id].status, "pass", `${id}: ${by[id].summary}`);
     assert.equal(by.canary.status, "skip");
     // The template is the template: near-identity by definition.
@@ -585,6 +605,35 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
     assert.equal(by["webkit-iphone"].status, "fail");
     assert.match(by["webkit-iphone"].summary, /WebKit unavailable/);
     for (const t of ["node", "playwright", "axe-core", "lighthouse", "chromium", "webkit"]) assert.ok(checks.tool_versions[t], t);
+  } finally {
+    if (prev === undefined) delete process.env.GREENHOUSE_SKIP_BROWSER;
+    else process.env.GREENHOUSE_SKIP_BROWSER = prev;
+  }
+});
+
+test("runCheck: a gate that throws is recorded as a failed gate and the run still returns checks.json", async () => {
+  const { dir } = templateRepo();
+  const prev = process.env.GREENHOUSE_SKIP_BROWSER;
+  process.env.GREENHOUSE_SKIP_BROWSER = "1";
+  try {
+    // Before the fix an exception inside a gate (here Lighthouse; live, axe's browserContext.close)
+    // escaped runCheck, so the run ended with no checks.json at all.
+    const checks = await runCheck({
+      repo: dir,
+      lighthouseRuns: 1,
+      lighthouseRunner: async () => {
+        throw new Error("browserContext.close: Protocol error (Target.disposeBrowserContext): Failed to find context with id X\n    at stack");
+      },
+    });
+    assert.equal(validate("checks", structuredClone(checks)).valid, true);
+    assert.equal(checks.all_green, false);
+    const by = Object.fromEntries(checks.gates.map((g) => [g.id, g]));
+    assert.equal(by.lighthouse.status, "fail");
+    assert.equal(by.lighthouse.class, "deterministic");
+    assert.equal(by.lighthouse.summary, "gate error: browserContext.close: Protocol error (Target.disposeBrowserContext): Failed to find context with id X");
+    assert.match(String((by.lighthouse.details as { error: string }).error), /at stack/);
+    // Every gate before it still ran and is recorded.
+    for (const id of ["build", "routes", "links", "secrets", "asset-cache", "axe", "webkit-iphone"]) assert.ok(by[id], id);
   } finally {
     if (prev === undefined) delete process.env.GREENHOUSE_SKIP_BROWSER;
     else process.env.GREENHOUSE_SKIP_BROWSER = prev;
@@ -710,6 +759,33 @@ test("asset-cache: an unversioned stylesheet served for 4 hours fails (BotRampar
     assert.deepEqual(off.map((o) => [o.url, o.cache_control]), [["/assets/site.css", "public, max-age=14400"]]);
   } finally {
     await s.close();
+  }
+});
+
+test("asset-cache: Cloudflare's injected /cdn-cgi/ scripts are ignored; the site's own unversioned script still fails", async () => {
+  const s = await serveSite((d) => {
+    mkdirSync(join(d, "cdn-cgi", "scripts", "5c5dd728", "cloudflare-static"), { recursive: true });
+    writeFileSync(join(d, "cdn-cgi", "scripts", "5c5dd728", "cloudflare-static", "email-decode.min.js"), "1");
+    edit(join(d, "index.html"), (h) => h.replace("</body>", '<script src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script></body>'));
+    edit(join(d, "_headers"), (h) => `${h}\n/cdn-cgi/*\n  Cache-Control: public\n`);
+  });
+  try {
+    const g = await assetCacheGate(s.site);
+    assert.equal(g.status, "pass", g.summary);
+    assert.deepEqual((g.details as { ignored_host_injected?: string[] }).ignored_host_injected, ["/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"]);
+  } finally {
+    await s.close();
+  }
+  const own = await serveSite((d) => {
+    withAssets({ "site.js": "1" }, '<script src="/assets/site.js"></script>', "public, max-age=14400")(d);
+    edit(join(d, "index.html"), (h) => h.replace("</body>", '<script src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script></body>'));
+  });
+  try {
+    const g = await assetCacheGate(own.site);
+    assert.equal(g.status, "fail", g.summary);
+    assert.deepEqual((g.details as { offenders: { url: string }[] }).offenders.map((o) => o.url), ["/assets/site.js"]);
+  } finally {
+    await own.close();
   }
 });
 

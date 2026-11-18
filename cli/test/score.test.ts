@@ -332,6 +332,15 @@ test("mismatched submission, checks, rubric, brief or bundle fails", () => {
   assert.throws(() => computeScore(bundle), /different evidence bundle/);
 });
 
+test("deployment_url: a trailing slash on the bare origin is the same deployment; another host is not", () => {
+  const slash = clone(base());
+  slash.checks.deployment_url = slash.submission.deployment_url + "/";
+  assert.deepEqual(computeScore(slash), computeScore(base()));
+  const other = clone(base());
+  other.checks.deployment_url = "https://other.pages.dev/";
+  assert.throws(() => computeScore(other), /checks\.json deployment_url/);
+});
+
 test("without checks.bundle_hash, inputs.bundle_hash comes from the reviews", () => {
   const inp = clone(base());
   delete inp.checks.bundle_hash;

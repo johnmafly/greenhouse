@@ -4,8 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="description" content="Example Seed: a Greenhouse seed package.">
+    <meta name="description" content="Example Seed&#x27;s concepts: projects, names and the registry.">
     <title>How it works | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/how-it-works.md">
   </head>
   <body>
     <header>
@@ -19,12 +20,18 @@
       </nav>
     </header>
     <main>
-      <h1>How it works</h1>
-      <p>Explain the mechanism in plain language: what goes in, what the product does with it, and what comes out.</p>
-      <p><a href="/docs/">All docs</a></p>
+      <h1>How Example Seed works</h1>
+      <p>Example Seed is a project registry with an HTTP API. A team names each project once, and every tool that needs to know about that project reads the same record from the registry instead of keeping its own copy. This page covers the ideas the rest of the guide builds on.</p>
+      <h2 id="concepts">Concepts</h2>
+      <h3 id="project">Project</h3>
+      <p>A project is the unit Example Seed keeps track of. It has a name, a creation time and an owner. You create it with one request and read it back by name from any service, script or pipeline.</p>
+      <h3 id="name">Name</h3>
+      <p>A name is lowercase letters, digits and hyphens. Names are unique within an account and never reused, so a link that contains a name keeps pointing at the same project.</p>
+      <h3 id="registry">Registry</h3>
+      <p>The registry is the service that stores projects and answers reads. You can use the hosted registry or run the open-source registry on your own servers; both expose the same API.</p>
+      <h2 id="the-flow">The flow</h2>
+      <p>A request comes in over HTTPS with an API key. The registry checks the key, validates the name, writes the project to its store and returns the stored record. Reads go straight to the store and return the same record shape, so clients need one parser for both.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/how-it-works.md">This page as Markdown</a></p>
     </main>
-    <footer>
-      <p>Example Seed is a Greenhouse seed: a preview of a product that is not built yet.</p>
-    </footer>
   </body>
 </html>

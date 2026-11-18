@@ -17,3 +17,40 @@ content:
   comparison: /docs/comparison/
   pricing: /pricing/
   signup: /signup/
+# What each pricing tier costs and what it costs to serve one customer on it (assisted pricing gate:
+# every tier's name and price must be on the pricing content, no paid tier below its cost to
+# serve, and the self-hosting path shown when self_host is true). A free tier that costs you
+# something to serve needs below_cost: true and a below_cost_reason. The full format, with
+# overages, cost lines, self_hosting, sources and assumptions, is in docs/package-contract.md in
+# johnmafly/greenhouse. Example numbers only.
+cost_model:
+  currency: USD
+  period: month
+  self_host: true
+  tiers:
+    - name: Free
+      price: 0
+      cost_to_serve: 0
+      includes: Self-hosted open-source edition, community support.
+    - name: Hosted
+      price: 20
+      cost_to_serve: 6
+      includes: Hosted by us, with email support.
+# Where each section of the user guide lives (docs gate, decision 0006): a site path with an
+# optional #anchor, or a list of them. All thirteen keys are required. Each page also needs a
+# Markdown version (/docs/<page>.md here), and /llms.txt and /llms-full.txt must list every page;
+# scripts/build.mjs generates all three from the HTML pages. Point these keys at your own guide.
+docs:
+  overview: /docs/how-it-works/
+  architecture: /docs/architecture/
+  features: /docs/features/
+  quickstart: /docs/getting-started/
+  configuration: /docs/configuration/
+  integrations: /docs/integration/
+  api_reference: /docs/api/
+  sdk_reference: /docs/sdk/
+  domain_reference: /docs/projects/
+  self_hosting: /docs/self-hosting/
+  security: /docs/security/
+  faq: /docs/faq/
+  changelog: /docs/changelog/

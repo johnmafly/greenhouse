@@ -22,11 +22,24 @@ export function edit(file: string, fn: (s: string) => string): void {
 /** The template's site/ as a built output folder (greenhouse.json written), optionally mutated. */
 export function builtSite(mutate?: (dir: string) => void, sha = FAKE_SHA, slug = "example-seed"): string {
   const dir = tmp();
-  cpSync(join(TEMPLATE, "site"), dir, { recursive: true });
+  cpSync(templateDist(), dir, { recursive: true });
   mkdirSync(join(dir, ".well-known"), { recursive: true });
   writeFileSync(join(dir, ".well-known", "greenhouse.json"), JSON.stringify({ slug, sha, built_at: "2026-11-18T00:00:00.000Z" }));
   mutate?.(dir);
   return dir;
+}
+
+let distCache: string | null = null;
+
+/** The template built once with its own `npm run build` script (guide Markdown and llms files included). */
+export function templateDist(): string {
+  if (distCache) return distCache;
+  const src = tmp("gh-check-template-");
+  cpSync(TEMPLATE, src, { recursive: true, filter: (p) => !/[\\/](dist|node_modules)$/.test(p) });
+  const r = spawnSync(process.execPath, ["scripts/build.mjs"], { cwd: src, encoding: "utf8", env: { ...process.env, CF_PAGES_COMMIT_SHA: FAKE_SHA } });
+  if (r.status !== 0) throw new Error(`template build failed: ${r.stderr}`);
+  distCache = join(src, "dist");
+  return distCache;
 }
 
 export interface Served {

@@ -18,6 +18,17 @@ export function gate(id: string, status: GateStatus, summary: string, metrics?: 
   return g;
 }
 
+/**
+ * A gate that threw instead of returning a result (a browser that went away, a protocol error):
+ * recorded as a failed gate so the run still writes checks.json with every other gate.
+ */
+export function gateError(id: string, e: unknown, cls: Gate["class"] = "deterministic"): Gate {
+  const message = e instanceof Error ? e.message : String(e);
+  const g = gate(id, "fail", `gate error: ${message.split("\n")[0].slice(0, 300)}`, undefined, { error: message.slice(0, 2000) });
+  g.class = cls;
+  return g;
+}
+
 /** Cap a list in details so checks.json stays readable. */
 function first<T>(items: T[], n = 50): T[] {
   return items.slice(0, n);
@@ -246,10 +257,17 @@ export async function linksGate(site: Site | null, why = "no site to check"): Pr
   const id = "links";
   if (!site) return noSite(id, why);
   const targets = new Map<string, Set<string>>(); // path -> pages that link to it
+  const ignored = new Set<string>();
   for (const p of htmlPages(site)) {
     for (const ref of references(p.body)) {
       const target = internalPath(ref.url, p.url, site.base);
       if (!target) continue;
+      // Cloudflare rewrites served HTML under /cdn-cgi/ (email obfuscation turns mailto: links into
+      // /cdn-cgi/l/email-protection#…, and injects its own scripts): the host's URLs, not the package's.
+      if (/^\/cdn-cgi\//.test(target)) {
+        ignored.add(target.split("#")[0]);
+        continue;
+      }
       if (!targets.has(target)) targets.set(target, new Set());
       (targets.get(target) as Set<string>).add(p.path);
     }
@@ -269,9 +287,10 @@ export async function linksGate(site: Site | null, why = "no site to check"): Pr
     if (typeof status === "string" || status >= 400) broken.push({ url: target, status, from: [...from].sort() });
   }
   const metrics = { pages: htmlPages(site).length, internal_urls: targets.size, broken: broken.length };
+  const extra = ignored.size ? { ignored_host_rewrites: [...ignored].sort().slice(0, 20) } : {};
   return broken.length
-    ? gate(id, "fail", `${plural(broken.length, "broken internal link")}`, metrics, { broken: first(broken) })
-    : gate(id, "pass", `${targets.size} internal URLs on ${metrics.pages} pages all resolve`, metrics);
+    ? gate(id, "fail", `${plural(broken.length, "broken internal link")}`, metrics, { broken: first(broken), ...extra })
+    : gate(id, "pass", `${targets.size} internal URLs on ${metrics.pages} pages all resolve`, metrics, ignored.size ? extra : undefined);
 }
 
 export function pageStructureGate(site: Site | null, why = "no site to check"): Gate {

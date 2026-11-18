@@ -4,8 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="description" content="Example Seed: a Greenhouse seed package.">
+    <meta name="description" content="Create an API key, create your first project and read it back.">
     <title>Getting started | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/getting-started.md">
   </head>
   <body>
     <header>
@@ -20,14 +21,23 @@
     </header>
     <main>
       <h1>Getting started</h1>
-      <p>The shortest path from nothing to a first result. Every code sample that calls the product names its operation from <code>spec/openapi.yaml</code> with <code>data-op</code>:</p>
+      <p>This guide takes you from nothing to a stored project and a successful read. You need an API key from the dashboard and a terminal with <code>curl</code>.</p>
+      <h2 id="create-an-api-key">Create an API key</h2>
+      <p>Sign in, open Settings, and create a key with the projects scope. Export it so the commands below can use it:</p>
+      <pre><code>export SEED_API_KEY=your-key</code></pre>
+      <h2 id="create-a-project">Create a project</h2>
+      <p>Send the project name in a JSON body. The registry answers with the stored record and status 201:</p>
       <pre><code data-op="createProject">curl -X POST https://api.example.com/v1/projects \
-        -H "content-type: application/json" \
-        -d '{"name": "first-project"}'</code></pre>
-      <p><a href="/docs/">All docs</a></p>
+  -H "authorization: Bearer $SEED_API_KEY" \
+  -H "content-type: application/json" \
+  -d '{"name": "first-project"}'</code></pre>
+      <h2 id="read-it-back">Read it back</h2>
+      <p>Read the project by name from any machine that has the key. The response is the same record you received when you created it:</p>
+      <pre><code data-op="getProject">curl https://api.example.com/v1/projects/first-project \
+  -H "authorization: Bearer $SEED_API_KEY"</code></pre>
+      <h2 id="next-steps">Next steps</h2>
+      <p>Wire the registry into your own services with the integration guide, or use the SDK reference to call it from code instead of the command line.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/getting-started.md">This page as Markdown</a></p>
     </main>
-    <footer>
-      <p>Example Seed is a Greenhouse seed: a preview of a product that is not built yet.</p>
-    </footer>
   </body>
 </html>

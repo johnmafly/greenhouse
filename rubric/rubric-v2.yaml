@@ -21,7 +21,7 @@ dimensions:
   - id: copy_voice
     name: Copy and voice
     weight: 0.15
-    nine: Lines you would quote, with a point of view; specific, short, no generic SaaS phrasing; a reader wants to keep scrolling.
+    nine: Lines you would quote, with a point of view; specific, short, no generic SaaS phrasing; a reader wants to keep scrolling. Present tense, as a shipping product; hedged or hypothetical framing (planned, proposed, concept, demo, by design, coming later) scores down (decision 0005).
   - id: distinctness
     name: Distinctness and information architecture
     weight: 0.15
@@ -31,9 +31,9 @@ dimensions:
     weight: 0.10
     nine: A reader in the target role understands the problem, why now and why this wins in under a minute, and wants it to exist.
   - id: docs_buildability
-    name: Docs and buildability
+    name: Docs depth and buildability
     weight: 0.10
-    nine: The required content (how it works, getting started, architecture, integration) is there, written for people, wherever the IA puts it; an engineer could start tomorrow.
+    nine: A user guide with the depth of a mature open-source project (decision 0006) - overview and concepts, design and architecture with diagrams, features, install and quickstart, configuration, integrations, an API reference covering the whole spec, SDK reference, the domain reference, self-hosting and operations, security model, FAQ and changelog - written for developers, infra engineers and agents, with Markdown and llms.txt versions; an engineer could start tomorrow and an agent could integrate from it alone. A thin or partial guide scores down even when the docs gate passes.
   - id: evidence_truth
     name: Evidence, truthfulness and comparison honesty
     weight: 0.10

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="What Example Seed does: named projects, one record shape, hosted or self-hosted.">
+    <title>Features | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/features.md">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>Features</h1>
+      <p>Example Seed does one thing: it gives every project a single, stable record that all of your tools can read. These are the parts of that job it handles for you.</p>
+      <h2 id="stable-names">Stable names</h2>
+      <p>Names are unique within an account and never reused after deletion. A dashboard link, a CI variable or a log line that carries a project name keeps resolving to the same project for its whole life.</p>
+      <h2 id="one-record-shape">One record shape</h2>
+      <p>Creating a project and reading it return the same JSON object. Clients parse one shape, and a record you stored is byte-for-byte the record you read back.</p>
+      <h2 id="validation-at-the-edge">Validation at the edge</h2>
+      <p>The registry rejects invalid names before anything is written, with an error that names the rule the request broke. Bad data never reaches the store, so every reader can trust what it gets.</p>
+      <h2 id="hosted-or-self-hosted">Hosted or self-hosted</h2>
+      <p>The hosted registry runs the same open-source code you can run yourself. Moving between them is a change of base URL and API key; the API, the SDK and the record shape stay the same.</p>
+      <h2 id="plain-http">Plain HTTP</h2>
+      <p>Everything goes through a small HTTPS API described in an OpenAPI document, so any language with an HTTP client can use Example Seed without the SDK.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/features.md">This page as Markdown</a></p>
+    </main>
+  </body>
+</html>

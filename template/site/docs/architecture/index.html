@@ -4,8 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="description" content="Example Seed: a Greenhouse seed package.">
+    <meta name="description" content="How the Example Seed registry is built: API, store and clients.">
     <title>Architecture | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/architecture.md">
   </head>
   <body>
     <header>
@@ -20,11 +21,27 @@
     </header>
     <main>
       <h1>Architecture</h1>
-      <p>Describe the components, how data flows between them, where state lives, and what runs where, in enough detail that an engineer could start building tomorrow.</p>
-      <p><a href="/docs/">All docs</a></p>
+      <p>Example Seed has three parts: clients that call the API, the registry service that validates and answers requests, and the store that keeps project records. Each part has one job, and the boundaries between them are plain HTTP and SQL.</p>
+      <figure>
+        <svg role="img" aria-label="Diagram: clients send HTTPS requests to the registry API, which reads and writes project records in the store" viewBox="0 0 560 120" width="100%" xmlns="http://www.w3.org/2000/svg">
+          <rect x="10" y="35" width="140" height="50" fill="none" stroke="currentColor"/>
+          <text x="80" y="65" text-anchor="middle" font-size="14" fill="currentColor">Clients</text>
+          <line x1="150" y1="60" x2="210" y2="60" stroke="currentColor"/>
+          <rect x="210" y="35" width="140" height="50" fill="none" stroke="currentColor"/>
+          <text x="280" y="65" text-anchor="middle" font-size="14" fill="currentColor">Registry API</text>
+          <line x1="350" y1="60" x2="410" y2="60" stroke="currentColor"/>
+          <rect x="410" y="35" width="140" height="50" fill="none" stroke="currentColor"/>
+          <text x="480" y="65" text-anchor="middle" font-size="14" fill="currentColor">Store</text>
+        </svg>
+        <figcaption>Clients call the registry API over HTTPS; the registry owns the store.</figcaption>
+      </figure>
+      <h2 id="registry-service">Registry service</h2>
+      <p>The registry is a stateless HTTP service. It authenticates each request with an API key, validates the project name against the naming rules and translates the request into one read or one write. Because it holds no state of its own, you can run as many copies as your traffic needs behind any load balancer.</p>
+      <h2 id="store">Store</h2>
+      <p>Project records live in a PostgreSQL database. Each record is one row keyed by account and name, with a unique index that enforces the naming rule at the database level as well as in the service.</p>
+      <h2 id="clients">Clients</h2>
+      <p>Clients are anything that speaks HTTP: the SDK, the command line, CI jobs and your own services. They never touch the store directly, which keeps validation in one place.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/architecture.md">This page as Markdown</a></p>
     </main>
-    <footer>
-      <p>Example Seed is a Greenhouse seed: a preview of a product that is not built yet.</p>
-    </footer>
   </body>
 </html>

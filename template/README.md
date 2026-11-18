@@ -13,10 +13,10 @@ and reviewers cap template-shaped sites under the rubric's sameness cap.
 
 | Path | What it is |
 |---|---|
-| `greenhouse.yaml` | `slug`, `build.command`, `build.output`, `production_branch: main`, and the `content` map (where each of the seven required pieces of content lives). Set `slug`; point `content` at your own pages. |
-| `site/` | The example site: `/`, `/docs/` and its five sections, `/pricing/`, `/signup/`, `404.html`. Only `/`, `/.well-known/greenhouse.json` and a 404 page are fixed routes. |
+| `greenhouse.yaml` | `slug`, `build.command`, `build.output`, `production_branch: main`, the `content` map (where each of the seven required pieces of content lives), the `cost_model` the pricing gate reconciles your prices with, and the `docs` block (where each of the thirteen user-guide sections lives). Set `slug`; point `content` and `docs` at your own pages; replace the example tiers with your own. |
+| `site/` | The example site: `/`, the user guide under `/docs/` (thirteen sections plus a comparison page), `/pricing/`, `/signup/`, `404.html`. Only `/`, `/.well-known/greenhouse.json` and a 404 page are fixed routes. |
 | `site/_headers` | `X-Robots-Tag: noindex` on every path until the owner publishes. |
-| `scripts/build.mjs` | `npm run build`: copies `site/` to `dist/` and writes `/.well-known/greenhouse.json` with the commit sha (`CF_PAGES_COMMIT_SHA`, else `git rev-parse HEAD`) and the slug from `greenhouse.yaml`. |
+| `scripts/build.mjs` | `npm run build`: copies `site/` to `dist/`, writes `/.well-known/greenhouse.json` with the commit sha (`CF_PAGES_COMMIT_SHA`, else `git rev-parse HEAD`) and the slug from `greenhouse.yaml`, and publishes the guide for agents: a Markdown copy of each `docs:` page (`/docs/<page>.md`), `/llms.txt` and `/llms-full.txt`. |
 | `spec/openapi.yaml` | Build spec. Every `<pre><code data-op="…">` sample must name one of its `operationId`s. |
 | `claims.yaml` | Claims ledger (`schemas/claims.schema.json`). |
 | `STATE.md` | Decisions, open findings, next steps, spend. |
@@ -51,9 +51,28 @@ Motion is welcome (and scored), but `greenhouse check` requires that it degrades
   scroll-reveal content at `opacity: 0` in CSS; hide it from a script (for example add a class
   to `<html>` first) so it stays visible when the script does not run.
 
+## Product voice
+
+Write the site as a shipping product, in present tense. `product-voice` fails on hedged or
+hypothetical framing ("planned", "by design", "the proposal", "concept", "demo", "coming soon" and
+the rest of the list in `docs/package-contract.md`) in page text, meta tags, alt text, JSON-LD,
+JavaScript strings, `llms.txt` and linked text files. Where a fact cannot be sourced, cut the
+sentence rather than hedge it (decision 0005).
+
 ## Preflight
 
 ```bash
 greenhouse check --repo .                       # build from a clean checkout, serve locally, run every gate
 greenhouse check --repo . --url https://<slug>.example.com   # check the deployment instead
 ```
+
+## User guide
+
+Every project ships a full user guide (decision 0006): overview and concepts, architecture with a
+diagram, features, quickstart, configuration, integrations, an API reference covering every
+operation in `spec/openapi.yaml`, SDK reference, your domain reference, self-hosting and
+operations, security model, FAQ and changelog. `docs:` in `greenhouse.yaml` says where each
+section lives. The `docs` gate checks each section against a word floor, and checks that every
+docs page has a Markdown version listed in `/llms.txt` and carried in `/llms-full.txt`, and that
+headings have stable `id`s. The example guide here is Example Seed's; write your own product's
+guide in its own structure.
