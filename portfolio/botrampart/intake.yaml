@@ -2,7 +2,11 @@
 # Source of truth: the founder's architecture plan (16 Nov 2026, 180 sources) and market
 # analysis (15 Nov 2026), both prepared by the BotRampart Reason. The owner approved using the
 # architecture plan as the intake (decision 0000-4). Values marked "proposal" are VC Joe's
-# proposals that the owner has not yet confirmed.
+# proposals that the owner has not yet confirmed. Updated with the owner's site feedback of
+# 18 Nov 2026 (relayed by VC Joe): bot detection, autopilot tiered challenges, custom policies
+# and the security-specialist agent are core, request economics is an add-on, and integration
+# runs in the customer's app or own infrastructure (decision 0007). Lines marked
+# "(owner direction, 2026-11-18)" come from that feedback.
 schema_version: 1
 slug: botrampart
 name: BotRampart
@@ -14,17 +18,22 @@ repo: johnmafly/botrampart-site
 deployment_url: https://botrampart.agenthatch.ai
 
 intent: >-
-  An open-source, self-hosted bot defense that never decides "bot or human". A browser SDK
-  solves an invisible proof-of-work and collects a few interaction signals; a backend SDK in the
-  customer's app server issues a signed session cookie, verifies it offline on every request,
-  charges each request against the session's budget by path cost ("request economics") and
-  applies the customer's policy rules, with no proxy in the request path. Every 5 minutes Core
-  turns the last window into a bucketed state, asks a decision model typed questions, caches the
-  answer for up to an hour and exposes it as fields policy rules can reference. Everything is
-  written to the customer's own object storage, and an agent with read-only DuckDB access
-  explains any decision in Slack, email or the console and proposes policy changes a person
-  approves. Positioned on control, not on beating Cloudflare: runs in your infrastructure, your
-  data never leaves, open source, explains itself.
+  An open-source, self-hosted bot defense for teams worried about the growing threat of AI bots
+  and browser automation. Bot detection is a core feature: a browser SDK solves an invisible
+  proof-of-work and collects risk signals from the browser and abnormal UI behaviour, and an
+  autopilot escalates suspicious sessions through multi-tier challenges under the customer's
+  custom policies. Integration happens in the customer's app or own infrastructure, with no
+  vendor proxy in the request path: a lightweight backend SDK in the app server issues a signed
+  session cookie, verifies it offline on every request and applies the policy, and the nginx
+  module, Cloudflare Worker and CloudFront adapters are further integration options. Request
+  economics (charging each request against the session's budget by path cost) is an add-on, not
+  the core. Every 5 minutes Core turns the last window into a bucketed state, asks a decision
+  model typed questions, caches the answer for up to an hour and exposes it as fields policy
+  rules can reference. Everything is written to the customer's own object storage, and a
+  security-specialist AI agent with read-only DuckDB access explains any decision in Slack,
+  email or the console and proposes policy changes a person approves, which other vendors do not
+  offer. Positioned on control, not on beating Cloudflare: runs in your infrastructure, your data
+  never leaves, open source, explains itself.
 
 buyer: >-
   Revenue core: mid-market SaaS, e-commerce, marketplaces, travel and ticketing sites with 5M to
@@ -54,11 +63,12 @@ locked_assumptions:
   - Identity is a server-set HttpOnly session cookie (rotated every 15 to 45 minutes, softly bound) plus an optional customer login ID; no fingerprint ID.
   - IP is not the identity. Network level counts only through mint buckets (IP, /24 or /48, ASN, TLS fingerprint) compared with that network's own baseline; the response is a harder puzzle, not a block, and signed-in sessions are exempt.
   - Tiered challenges. Tier 0 provisional, tier 1 memory-hard adaptive proof-of-work, tier 2 human check, tier 3 a pluggable step-up with a non-visual alternative; the image CAPTCHA is one tier 3 option, not the fixed top tier.
-  - Enforcement with SDKs only. "No proxy", not "no middleware". Tokens are verified offline in the app server, the fail mode is set per route, and the CDN or WAF keeps handling floods.
-  - Request economics is the core. Weighted token bucket per session by path cost, with a mint bucket and an account ceiling against minting more sessions.
+  - 'Enforcement inside the customer''s own infrastructure, with no vendor proxy. The Node SDK in the app comes first; an nginx module, a Cloudflare Worker and CloudFront (Lambda@Edge) in the customer''s own account are further integration options. "No proxy", not "no middleware": tokens are verified offline, the fail mode is set per route, and the CDN or WAF keeps handling floods. (owner direction, 2026-11-18)'
+  - Detection and tiered challenges are the core; request economics is an add-on. Detection scores browser risk signals and abnormal UI behaviour; the add-on is a weighted token bucket per session by path cost, with a mint bucket and an account ceiling against minting more sessions. (owner direction, 2026-11-18)
   - The decision model governs and is never inline. It works on a 5-minute bucketed state, receives only closed enums with numbers bucketed in code, answers typed questions, is cached on the state hash for up to an hour with tripwires forcing an early re-ask, and sits behind one provider interface (Gemini Decision 1 or a self-hosted model).
   - No warehouse and no ClickHouse. Metrics and the decision log go to S3-compatible object storage (R2, S3, MinIO) as Parquet, read with DuckDB; per-session counters come from the backend SDK.
-  - No autopilot. Policy is a file of rules with good defaults; the model's answer is exposed as ai.* fields that rules reference; rules are simulated before publishing.
+  - The backend SDK stays lightweight and keeps no aggregated visitor metrics; Core aggregates. (owner direction, 2026-11-18)
+  - 'Autopilot: challenges escalate automatically by tier. Policy is a file of custom rules with good defaults; the model''s answer is exposed as ai.* fields that rules reference; rules are simulated before publishing; the model stays in shadow mode and never acts live in the first build. (owner direction, 2026-11-18)'
   - The agent explains every decision from the decision log by reference ID, uses named queries before free SQL, has read-only credentials, and a person approves every policy change.
   - Hosting is Cloudflare first, portable to AWS or Azure through OpenOrange using only bindings it marks drop-in, behind a thin ports layer, with plain Node adapters as a second exit.
   - No Helm app. Ship containers plus SDKs with one generator (npx botrampart init) and observe mode first.
@@ -74,10 +84,12 @@ non_goals:
   - Free-form SQL, policy proposals and email from the agent.
   - Python, Java and other SDKs (Node only).
   - Cloud billing, the white-label build and single sign-on.
-  - A published benchmark site (the harness exists, unpublished).
-  - Edge adapters, mobile SDKs and Web Bot Auth.
+  - Published bot-detection benchmark results (vendor x automation-tool grid; the site shows its design with no results).
+  - The nginx module, Cloudflare Worker and CloudFront adapters (product direction; shown as not available yet).
+  - Mobile SDKs and Web Bot Auth.
   - Mobile apps and partner APIs as protected clients.
   - The decision model acting live (it runs in shadow mode).
+  - 'Real accounts: sign-up, sign-in and the dashboard are a client-side preview with sample data (exposure.real_signups stays false).'
 
 budget:
   rounds: 6
