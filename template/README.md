@@ -13,7 +13,7 @@ and reviewers cap template-shaped sites under the rubric's sameness cap.
 
 | Path | What it is |
 |---|---|
-| `greenhouse.yaml` | `slug`, `build.command`, `build.output`, `production_branch: main`, and the `content` map (where each of the seven required pieces of content lives). Set `slug`; point `content` at your own pages. |
+| `greenhouse.yaml` | `slug`, `build.command`, `build.output`, `production_branch: main`, the `content` map (where each of the seven required pieces of content lives) and the `cost_model` the pricing gate reconciles your prices with. Set `slug`; point `content` at your own pages; replace the example tiers with your own. |
 | `site/` | The example site: `/`, `/docs/` and its five sections, `/pricing/`, `/signup/`, `404.html`. Only `/`, `/.well-known/greenhouse.json` and a 404 page are fixed routes. |
 | `site/_headers` | `X-Robots-Tag: noindex` on every path until the owner publishes. |
 | `scripts/build.mjs` | `npm run build`: copies `site/` to `dist/` and writes `/.well-known/greenhouse.json` with the commit sha (`CF_PAGES_COMMIT_SHA`, else `git rev-parse HEAD`) and the slug from `greenhouse.yaml`. |
