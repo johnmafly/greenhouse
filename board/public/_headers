@@ -1,0 +1,4 @@
+# Cloudflare Pages response headers for the board (docs/decisions/0001).
+# noindex until the owner publishes; the site itself stays public (docs/decisions/0000).
+/*
+  X-Robots-Tag: noindex, nofollow
