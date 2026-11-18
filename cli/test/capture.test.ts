@@ -21,8 +21,11 @@ import { CONTENT_KEYS, loadContentMap, parseContentMap, routesFromContentMap, st
 import { motionTargets, pageSlug, stripPositions, type MotionEntry } from "../src/capture-motion.ts";
 import { WEBKIT_DIR, collectWebkitEvidence, type WebkitEvidence } from "../src/capture-webkit.ts";
 import { validate } from "../src/lib/schemas.ts";
+import { DOCS_DIR, docsDirName, parseDocsMap, planDocs } from "../src/capture-docs.ts";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "capture-content-map");
+// greenhouse.yaml with a docs: block (decision 0006) beside the same content map.
+const DOCS_FIXTURE = join(import.meta.dirname, "fixtures", "capture-docs");
 // A round dir as `greenhouse check --round-dir` leaves it: checks.json with a webkit-iphone gate
 // (/ clean, /how-it-works/ with one problem) and its two fold screenshots.
 const WEBKIT_ROUND = join(import.meta.dirname, "fixtures", "capture-webkit", "round");
@@ -170,6 +173,47 @@ describe("content map routes (contract v2)", () => {
   });
 });
 
+describe("docs: block (user guide) planning", () => {
+  test("distinct paths in section order, lists flattened, anchors dropped, routes shared", async () => {
+    const loaded = await loadContentMap(DOCS_FIXTURE);
+    const docs = parseDocsMap(loaded.doc);
+    assert.equal(docs.present, true);
+    assert.deepEqual(docs.errors, []);
+    const { routes } = routesFromContentMap(loaded.map!);
+    const plan = planDocs(docs, routes);
+    assert.deepEqual(
+      plan.targets.map((t) => [t.name, t.path, t.serves.map((s) => s.target)]),
+      [
+        ["01-overview", "/docs/", ["/docs/"]],
+        ["02-features", "/docs/features/", ["/docs/features/", "/docs/features/#faq"]],
+        ["03-configuration", "/docs/configuration/", ["/docs/configuration/"]],
+        ["04-api_reference", "/docs/api/", ["/docs/api/"]],
+        ["05-sdk_reference", "/docs/sdk/", ["/docs/sdk/"]],
+        ["06-domain_reference", "/docs/policy/", ["/docs/policy/"]],
+        ["07-domain_reference", "/docs/cohorts/", ["/docs/cohorts/#model"]],
+        ["08-self_hosting", "/docs/self-hosting/", ["/docs/self-hosting/"]],
+        ["09-security", "/docs/security/", ["/docs/security/"]],
+        ["10-changelog", "/docs/changelog/", ["/docs/changelog/"]],
+      ],
+    );
+    assert.deepEqual(plan.targets[1].serves.map((s) => s.key), ["features", "faq"]);
+    // Paths the content map already captures are not visited twice; their sections are recorded.
+    assert.deepEqual([...plan.shared], [
+      ["/docs/architecture/", [{ key: "architecture", target: "/docs/architecture/" }]],
+      ["/docs/start/", [{ key: "quickstart", target: "/docs/start/#install" }, { key: "integrations", target: "/docs/start/#integrate" }]],
+    ]);
+    assert.equal(docsDirName("api reference", 11), "12-api_reference");
+  });
+
+  test("no docs: block means no docs plan; a partial block keeps its valid entries and its errors", async () => {
+    assert.equal(parseDocsMap((await loadContentMap(FIXTURES)).doc).present, false);
+    const partial = parseDocsMap({ docs: { overview: "/docs/", faq: ["/docs/faq/", "nope"], bogus: "/x/" } });
+    assert.ok(partial.errors.some((e) => /docs\.architecture is missing/.test(e)));
+    assert.ok(partial.errors.some((e) => /docs\.bogus is not a known section/.test(e)));
+    assert.deepEqual(planDocs(partial, ["/"]).targets.map((t) => t.path), ["/docs/", "/docs/faq/"]);
+  });
+});
+
 describe("motion evidence helpers", () => {
   test("targets are home and the signup start, deduplicated", () => {
     assert.deepEqual(motionTargets("/signup/"), [{ page: "/", roles: ["home"] }, { page: "/signup/", roles: ["signup"] }]);
@@ -185,6 +229,7 @@ describe("motion evidence helpers", () => {
   test("R2 content types cover the new files", () => {
     assert.equal(contentType("motion/home-desktop-scroll.webm"), "video/webm");
     assert.equal(contentType("motion/home-desktop-strip.png"), "image/png");
+    assert.equal(contentType("docs/01-overview/page.md"), "text/markdown; charset=utf-8");
   });
 });
 
@@ -324,7 +369,7 @@ test("capture writes a valid bundle for every route [browser]", { skip: browserS
     assert.equal(m.files.length, 19);
     const v = await verifyBundle(out);
     assert.deepEqual(v.errors, []);
-    assert.equal(m.schema_version, 3);
+    assert.equal(m.schema_version, 4);
     assert.equal(m.route_source, "routes_option");
     assert.equal(m.webkit_iphone, null, "no webkit screenshots without --round-dir/--evidence-dir");
     assert.equal((m.pages as { content: unknown }[])[0].content, null);
@@ -421,6 +466,148 @@ test("capture follows the content map and records what each page serves [browser
     assert.ok(motion.every((e) => e.kind === "scroll_video" || e.frames === 4));
     assert.ok(!seen.some((u) => u.startsWith("/signup")), "no v1 routes visited");
     assert.deepEqual((await verifyBundle(out)).errors, []);
+    // No docs: block: the manifest has exactly the v3 fields (only schema_version moved to 4),
+    // no docs/ dir, no guide fields on pages, and neither /llms.txt nor Markdown is fetched.
+    const onDisk = JSON.parse(await readFile(join(out, "manifest.json"), "utf8"));
+    assert.equal(onDisk.schema_version, 4);
+    assert.deepEqual(Object.keys(onDisk).sort(), ["access_service_token", "bundle_hash", "captured_at", "content_map", "deployment", "files", "kind", "motion", "motion_timing", "pages", "route_source", "schema_version", "text_source", "tool", "url", "viewports", "webkit_iphone"]);
+    for (const p of onDisk.pages) {
+      assert.deepEqual(Object.keys(p).sort(), ["content", "files", "final_url", "hidden_text_chars", "mobile_layout_width", "route", "status", "title", "url"]);
+      assert.deepEqual(Object.keys(p.files).sort(), ["desktop", "mobile", "text"]);
+    }
+    assert.equal(existsSync(join(out, DOCS_DIR)), false);
+    assert.ok(!seen.some((u) => u.endsWith(".md") || u === "/llms.txt"));
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("capture freezes the user guide named by the docs: block [browser]", { skip: browserSkip }, async () => {
+  const seen: string[] = [];
+  // Markdown alternates: /docs/ and the shared /docs/architecture/ link same-origin Markdown;
+  // /docs/features/ links another origin, /docs/api/ a 404 and /docs/sdk/ HTML; the rest link none.
+  const alternates: Record<string, string> = {
+    "/docs/": "/docs.md",
+    "/docs/architecture/": "/docs/architecture.md",
+    "/docs/features/": "https://elsewhere.example/docs/features.md",
+    "/docs/api/": "/docs/api.md",
+    "/docs/sdk/": "/docs/sdk.md",
+  };
+  const server = createServer((req, res) => {
+    const url = req.url ?? "";
+    seen.push(url);
+    if (url === "/docs.md" || url === "/docs/architecture.md") {
+      res.setHeader("content-type", "text/markdown; charset=utf-8");
+      return res.end(`# Markdown of ${url}\n\nThe guide body in Markdown.\n`);
+    }
+    if (url === "/docs/sdk.md") {
+      res.setHeader("content-type", "text/html");
+      return res.end(PAGE("SPA shell", "<p>not markdown</p>"));
+    }
+    if (url === "/llms.txt") {
+      res.setHeader("content-type", "text/plain");
+      return res.end("# Fixture\n\n- [Overview](/docs.md)\n");
+    }
+    if (url.endsWith(".md") || url.startsWith("/.well-known/")) {
+      res.statusCode = 404;
+      return res.end("not found");
+    }
+    const alt = alternates[url];
+    res.setHeader("content-type", "text/html");
+    res.end(
+      PAGE(`Guide ${url}`, `<p>Guide body of ${url}.</p><p style="display:none">HIDDEN-GUIDE</p><h2 id="install">Install</h2><h2 id="faq">FAQ</h2><div class="tall"></div><p>Guide footer.</p>`).replace(
+        "</head>",
+        alt ? `<link rel="alternate" type="text/markdown" href="${alt}"></head>` : "</head>",
+      ),
+    );
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  const root = await mkdtemp(join(tmpdir(), "gh-capture-docs-"));
+  const out = join(root, "bundle");
+  try {
+    const loaded = await loadContentMap(DOCS_FIXTURE);
+    const docsMap = parseDocsMap(loaded.doc);
+    const m = await capture({ url: `http://127.0.0.1:${port}/`, out, contentMap: loaded.map, docsMap, motion: false, log: () => {} });
+    assert.equal(m.schema_version, 4);
+    assert.deepEqual((await verifyBundle(out)).errors, []);
+    type Files = { text: string; desktop: string; markdown: string | null };
+    const docs = m.docs as {
+      source: string;
+      errors: string[];
+      sections: Record<string, { target: string; path: string; files: Files }[]>;
+      pages: { path: string; status: number; title: string; docs: { key: string; target: string }[]; files: Files; markdown_alternate: { url: string | null; status: number | null; file: string | null; note: string | null } }[];
+      llms_txt: { file: string | null; status: number | null };
+    };
+    assert.deepEqual(docs.errors, []);
+
+    // Ten guide pages visited (the two shared with the content map are not), each with its own dir.
+    assert.deepEqual(docs.pages.map((p) => p.files.text), [
+      "docs/01-overview/text.txt",
+      "docs/02-features/text.txt",
+      "docs/03-configuration/text.txt",
+      "docs/04-api_reference/text.txt",
+      "docs/05-sdk_reference/text.txt",
+      "docs/06-domain_reference/text.txt",
+      "docs/07-domain_reference/text.txt",
+      "docs/08-self_hosting/text.txt",
+      "docs/09-security/text.txt",
+      "docs/10-changelog/text.txt",
+    ]);
+    const visits = (path: string) => seen.filter((u) => u === path).length;
+    assert.equal(visits("/docs/start/"), 2, "shared page captured once (desktop + mobile), not again for docs");
+    assert.equal(visits("/docs/architecture/"), 2);
+    assert.equal(visits("/docs/"), 1, "guide pages: desktop only");
+    assert.ok(docs.pages.every((p) => p.status === 200 && p.title === `Guide ${p.path}`));
+
+    // Text: same extraction as pages (visible only).
+    const overview = await readFile(join(out, "docs/01-overview/text.txt"), "utf8");
+    assert.match(overview, /Guide body of \/docs\/\./);
+    assert.match(overview, /Guide footer\./);
+    assert.doesNotMatch(overview, /HIDDEN-/);
+    assert.equal(pngSize(await readFile(join(out, "docs/01-overview/desktop.png"))).width, 1440);
+    assert.ok(!m.files.some((f) => f.path.startsWith("docs/") && /mobile|\.webm/.test(f.path)), "no mobile or motion for guide pages");
+
+    // Markdown: saved when same-origin and Markdown; recorded with a note otherwise.
+    const byPath = new Map(docs.pages.map((p) => [p.path, p]));
+    assert.equal(byPath.get("/docs/")!.files.markdown, "docs/01-overview/page.md");
+    assert.match(await readFile(join(out, "docs/01-overview/page.md"), "utf8"), /^# Markdown of \/docs\.md/);
+    assert.match(byPath.get("/docs/features/")!.markdown_alternate.note!, /not on the deployment's origin/);
+    assert.ok(!seen.includes("/docs/features.md"));
+    assert.deepEqual([byPath.get("/docs/api/")!.files.markdown, byPath.get("/docs/api/")!.markdown_alternate.note], [null, "HTTP 404"]);
+    assert.deepEqual([byPath.get("/docs/sdk/")!.files.markdown, byPath.get("/docs/sdk/")!.markdown_alternate.note], [null, "returned HTML, not Markdown"]);
+    assert.deepEqual(byPath.get("/docs/configuration/")!.markdown_alternate, { url: null, status: null, file: null, note: null });
+    assert.equal(existsSync(join(out, "docs/03-configuration/page.md")), false);
+
+    // Shared pages keep their pages/ files and gain the docs keys and their Markdown.
+    const pages = m.pages as { route: string; docs?: { key: string; target: string }[]; files: { text: string; markdown?: string | null } }[];
+    const start = pages.find((p) => p.route === "/docs/start/")!;
+    assert.deepEqual(start.docs, [{ key: "quickstart", target: "/docs/start/#install" }, { key: "integrations", target: "/docs/start/#integrate" }]);
+    assert.equal(start.files.markdown, null);
+    const arch = pages.find((p) => p.route === "/docs/architecture/")!;
+    assert.deepEqual(arch.docs, [{ key: "architecture", target: "/docs/architecture/" }]);
+    assert.equal(arch.files.markdown, "pages/04-docs-architecture/page.md");
+    assert.ok(existsSync(join(out, "pages/04-docs-architecture/page.md")));
+    assert.equal(pages.find((p) => p.route === "/vs/")!.docs, undefined, "pages the guide does not name are unchanged");
+
+    // The docs map: section -> paths (as written) -> files, for all 13 sections.
+    assert.equal(Object.keys(docs.sections).length, 13);
+    assert.deepEqual(docs.sections.domain_reference.map((s) => [s.target, s.path, s.files.text]), [
+      ["/docs/policy/", "/docs/policy/", "docs/06-domain_reference/text.txt"],
+      ["/docs/cohorts/#model", "/docs/cohorts/", "docs/07-domain_reference/text.txt"],
+    ]);
+    assert.deepEqual(docs.sections.faq[0].files, { text: "docs/02-features/text.txt", desktop: "docs/02-features/desktop.png", markdown: null });
+    assert.deepEqual(docs.sections.quickstart[0].files, { text: "pages/03-docs-start/text.txt", desktop: "pages/03-docs-start/desktop.png", markdown: null });
+    assert.equal(docs.sections.architecture[0].files.markdown, "pages/04-docs-architecture/page.md");
+    const hashed = new Set(m.files.map((f) => f.path));
+    for (const refs of Object.values(docs.sections)) for (const r of refs) for (const f of Object.values(r.files)) if (f) assert.ok(hashed.has(f), `${f} is hashed`);
+
+    // /llms.txt is bundled.
+    assert.equal(docs.llms_txt.file, "docs/llms.txt");
+    assert.equal(await readFile(join(out, "docs/llms.txt"), "utf8"), "# Fixture\n\n- [Overview](/docs.md)\n");
+    await writeFile(join(out, "docs/01-overview/page.md"), "tampered");
+    assert.ok((await verifyBundle(out)).errors.includes("sha256 mismatch: docs/01-overview/page.md"));
   } finally {
     server.close();
     await rm(root, { recursive: true, force: true });
@@ -522,7 +709,7 @@ describe("webkit-iphone evidence (greenhouse check's iPhone screenshots)", () =>
     const out = join(root, "bundle");
     try {
       const m = await capture({ url: `http://127.0.0.1:${port}/`, out, routes: ["/", "/how-it-works/"], webkit: { roundDir: WEBKIT_ROUND }, motion: false, log: () => {} });
-      assert.equal(m.schema_version, 3);
+      assert.equal(m.schema_version, 4);
       const ev = m.webkit_iphone as WebkitEvidence;
       assert.deepEqual(ev.screenshots.map((s) => [s.route, s.path]), [["/", "webkit-iphone/home.png"], ["/how-it-works/", "webkit-iphone/how-it-works.png"]]);
       assert.equal(ev.gate?.status, "fail");

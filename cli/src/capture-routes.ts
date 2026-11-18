@@ -70,8 +70,8 @@ export function routesFromContentMap(map: ContentMap): ContentRoutes {
   return { routes, serves };
 }
 
-/** Read greenhouse.yaml (a file, or a project checkout that holds one) and return its content map or null. */
-export async function loadContentMap(fileOrDir: string): Promise<{ file: string; map: ContentMap | null }> {
+/** Read greenhouse.yaml (a file, or a project checkout that holds one): its content map or null, and the parsed document. */
+export async function loadContentMap(fileOrDir: string): Promise<{ file: string; map: ContentMap | null; doc: unknown }> {
   let file = fileOrDir;
   try {
     if ((await stat(fileOrDir)).isDirectory()) file = join(fileOrDir, "greenhouse.yaml");
@@ -90,5 +90,5 @@ export async function loadContentMap(fileOrDir: string): Promise<{ file: string;
   } catch (e) {
     throw new Error(`${file}: invalid YAML: ${(e as Error).message.split("\n")[0]}`);
   }
-  return { file, map: parseContentMap(doc, file) };
+  return { file, map: parseContentMap(doc, file), doc };
 }

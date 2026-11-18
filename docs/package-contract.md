@@ -190,6 +190,32 @@ element, without nav, header, footer and aside). The guide may share pages with 
 The template's `scripts/build.mjs` generates the Markdown versions, `/llms.txt` and
 `/llms-full.txt` from the HTML pages; any build that publishes the same files works.
 
+**In the evidence bundle.** Reviewers see only the frozen bundle, so `greenhouse capture
+--greenhouse-yaml` freezes the guide too (bundle manifest v4). Every distinct path in `docs:`
+(lists flattened, `#anchor`s dropped) that is not already a captured route gets its own folder,
+numbered in section order and named after the first section on it:
+
+```text
+docs/
+  01-overview/
+    text.txt      visible text of the desktop render (same extraction as pages/)
+    desktop.png   full-page desktop screenshot (no mobile, no motion)
+    page.md       the page's <link rel="alternate" type="text/markdown">, when it links one on the
+                  deployment's origin and it returns Markdown
+  02-features/ ...
+  llms.txt        /llms.txt, when served
+pages/<NN>-<route>/page.md   Markdown of a route that is also a guide page
+```
+
+A guide path the content map already captures (`docs.architecture` on `content.architecture`'s
+page) is not visited twice: its `pages/` entry lists the sections in `pages[].docs`, and its
+Markdown is saved as `pages/<NN>-<route>/page.md`. `manifest.json`'s `docs` maps each section to
+its paths (as written, anchors kept) and the files holding each one
+(`docs.sections.<key>[].files.{text,desktop,markdown}`), lists the visited guide pages with status,
+title and Markdown outcome (`docs.pages[]`, with a note when a linked alternate was cross-origin,
+failed or returned HTML), carries the `docs:` block's errors, and records `docs.llms_txt`. Without
+a `docs:` block, capture fetches none of this and the manifest has no `docs` field.
+
 ## Rules checked by gates
 
 - Every page has `<title>`, one `<h1>`, `lang` on `<html>`, no placeholder text (`lorem`, `TODO`, `TBD`, `[placeholder]`).
