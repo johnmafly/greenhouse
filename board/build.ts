@@ -10,7 +10,7 @@
 // input hash does not match its files (see board/src/data.ts).
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -130,11 +130,31 @@ export function buildBoard(opts: BuildOptions = {}): BuildResult {
     ".well-known/greenhouse.json",
     JSON.stringify({ slug: "greenhouse", sha: build.sha, built_at: build.builtAt }, null, 2) + "\n",
   );
-  appendFileSync(
-    join(outDir, "_headers"),
-    `\n# Added by board/build.ts: the only script is the inline sweep-age check, allowed by hash.\n/*\n  Content-Security-Policy: ${CSP()}\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n`,
+  // One `/*` rule only: Cloudflare Pages applied just the last of two `/*` rules, which dropped
+  // X-Robots-Tag in production. So the build's headers (CSP allowing only the inline sweep-age
+  // check by hash) join the existing `/*` rule from public/.
+  const headersPath = join(outDir, "_headers");
+  writeFileSync(
+    headersPath,
+    addToCatchAllRule(existsSync(headersPath) ? readFileSync(headersPath, "utf8") : "", [
+      `Content-Security-Policy: ${CSP()}`,
+      "X-Content-Type-Options: nosniff",
+      "Referrer-Policy: no-referrer",
+    ]),
   );
   return { outDir, files, sha: build.sha };
+}
+
+/** Append header lines to the `/*` rule of a _headers file, creating the rule if it is missing. */
+export function addToCatchAllRule(headers: string, lines: string[]): string {
+  const out = headers.replace(/\s*$/, "").split("\n");
+  const start = out.findIndex((l) => l.trim() === "/*");
+  const add = lines.map((l) => `  ${l}`);
+  if (start === -1) return [...out.filter((l) => l !== ""), "/*", ...add, ""].join("\n");
+  let end = start + 1;
+  while (end < out.length && /^\s+\S/.test(out[end])) end++;
+  out.splice(end, 0, ...add);
+  return out.join("\n") + "\n";
 }
 
 if (import.meta.main) {
