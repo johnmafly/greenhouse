@@ -130,6 +130,9 @@ export function jsImports(js: string, jsUrl: string, origin: string): AssetRef[]
   return out;
 }
 
+/** Paths a host (Cloudflare) injects into served pages; not the package's assets. */
+export const HOST_INJECTED_RE = /^\/cdn-cgi\//;
+
 function sameOrigin(ref: string | undefined, base: string, origin: string): string | null {
   if (!ref || /^(data|blob|javascript):/i.test(ref.trim())) return null;
   try {
@@ -172,9 +175,16 @@ export async function assetCacheGate(site: Site | null, why = "no site to check"
   const queue: AssetRef[] = [];
   for (const p of pages) queue.push(...pageAssets(p.body, p.url, origin, p.path));
   const seen = new Map<string, AssetResult>();
+  const ignored = new Set<string>();
   while (queue.length && seen.size < maxAssets) {
     const ref = queue.shift() as AssetRef;
     if (seen.has(ref.url)) continue;
+    // Cloudflare injects its own scripts under /cdn-cgi/ (email obfuscation, Web Analytics, Rocket
+    // Loader): the host serves them, the package cannot version them, as in webkit-iphone.
+    if (HOST_INJECTED_RE.test(new URL(ref.url).pathname)) {
+      ignored.add(pathOf(ref.url));
+      continue;
+    }
     const r: AssetResult = { url: ref.url, path: pathOf(ref.url), kind: ref.kind, from: ref.from, status: null, cache_control: null, fingerprinted: fingerprinted(ref.url), ok: false, reason: "" };
     seen.set(ref.url, r);
     let body = "";
@@ -215,8 +225,9 @@ export async function assetCacheGate(site: Site | null, why = "no site to check"
     offenders: offenders.length,
   };
   const show = (a: AssetResult) => ({ url: a.path, kind: a.kind, from: a.from, status: a.status, cache_control: a.cache_control, fingerprinted: a.fingerprinted, reason: a.reason });
-  const details = { offenders: offenders.slice(0, 50).map(show), assets: assets.slice(0, 100).map(show) };
-  if (assets.length === 0) return gate(id, "pass", `no same-origin stylesheets, scripts, modules, fonts or preloads on ${pages.length} pages`, metrics);
+  const details: Record<string, unknown> = { offenders: offenders.slice(0, 50).map(show), assets: assets.slice(0, 100).map(show) };
+  if (ignored.size) details.ignored_host_injected = [...ignored].slice(0, 20);
+  if (assets.length === 0) return gate(id, "pass", `no same-origin stylesheets, scripts, modules, fonts or preloads on ${pages.length} pages`, metrics, ignored.size ? details : undefined);
   if (offenders.length) {
     const a = offenders[0];
     return gate(

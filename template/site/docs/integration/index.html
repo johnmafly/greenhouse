@@ -4,8 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="description" content="Example Seed: a Greenhouse seed package.">
+    <meta name="description" content="Connect Example Seed to CI, deploy pipelines and your own services.">
     <title>Integration guide | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/integration.md">
   </head>
   <body>
     <header>
@@ -20,9 +21,18 @@
     </header>
     <main>
       <h1>Integration guide</h1>
-      <p>How to add Example Seed to an existing system, step by step.</p>
-      <pre><code data-op="getProject">curl https://api.example.com/v1/projects/first-project</code></pre>
-      <p><a href="/docs/">All docs</a></p>
+      <p>Most teams connect Example Seed to the places that already know about projects: their CI system, their deploy pipeline and their internal services. Each integration is a few HTTP calls.</p>
+      <h2 id="ci-pipelines">CI pipelines</h2>
+      <p>Read the project at the start of a pipeline so every job uses the registry's record instead of a hard-coded value. Store the API key in your CI system's secret store and pass it as a bearer token:</p>
+      <pre><code data-op="getProject">curl https://api.example.com/v1/projects/first-project \
+  -H "authorization: Bearer $SEED_API_KEY"</code></pre>
+      <h2 id="deploy-pipelines">Deploy pipelines</h2>
+      <p>Create the project when a new service is set up, before its first deploy. The create call fails with a clear error when the name is taken, which stops a second service from claiming the same name.</p>
+      <h2 id="internal-services">Internal services</h2>
+      <p>Services read projects through the SDK or plain HTTP. Cache a record for as long as your service runs; names never move to another project, so a cached record never points at the wrong one.</p>
+      <h2 id="webhooks-and-events">Webhooks and events</h2>
+      <p>Example Seed answers requests and sends no events. Services that need to react to a new project read the registry on their own schedule.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/integration.md">This page as Markdown</a></p>
     </main>
   </body>
 </html>

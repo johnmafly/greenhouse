@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="The project record: fields, naming rules and lifecycle.">
+    <title>Project reference | Example Seed</title>
+    <link rel="alternate" type="text/markdown" href="/docs/projects.md">
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>Project reference</h1>
+      <p>Projects are Example Seed's only resource. This page describes the record every API call and SDK method returns, the rules a name has to follow and what happens to a project over its life.</p>
+      <h2 id="the-project-record">The project record</h2>
+      <p>A record has three fields. <code>name</code> is the project's unique name within your account. <code>created_at</code> is the time the registry stored it, in RFC 3339 format and UTC. <code>owner</code> is the account that created it.</p>
+      <h2 id="naming-rules">Naming rules</h2>
+      <p>A name is 1 to 63 characters of lowercase letters, digits and hyphens, and starts with a letter. Names are case-sensitive only in the sense that uppercase is rejected, so two people typing the same name always reach the same project.</p>
+      <h2 id="lifecycle">Lifecycle</h2>
+      <p>A project exists from the moment the create call returns 201. Its name is reserved for your account from then on: deleting a project retires the name rather than freeing it, so old links and logs never resolve to a different project.</p>
+      <h2 id="limits">Limits</h2>
+      <p>An account holds as many projects as its plan allows. Reads and writes share the plan's request rate, and a request over the rate gets status 429 with a <code>retry-after</code> header.</p>
+      <p><a href="/docs/">All docs</a> · <a href="/docs/projects.md">This page as Markdown</a></p>
+    </main>
+  </body>
+</html>

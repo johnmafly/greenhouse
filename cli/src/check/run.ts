@@ -9,6 +9,7 @@ import { REPO_ROOT, assertValid, readDocument } from "../lib/schemas.ts";
 import type { Checks, Gate, Submission } from "../lib/schemas.ts";
 import { assetCacheGate } from "./assets.ts";
 import { productVoiceGate } from "./voice.ts";
+import { docsGate } from "./docs.ts";
 import { axeGate, browserAvailable, launchBrowser, signupGate } from "./browser.ts";
 import { cleanBuild, git, scanCorpus } from "./build.ts";
 import { claimLinksGate } from "./claim-links.ts";
@@ -218,6 +219,7 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     push(await productVoiceGate(site, why));
     push(noindexGate(site, why));
     push(specSamplesGate(build.checkoutDir, site, why));
+    push(await docsGate(site, build.checkoutDir, why));
     let browserWhy = why;
     const startBrowser = async (): Promise<Browser | null> => {
       if (!site) return null;
