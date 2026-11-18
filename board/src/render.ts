@@ -138,7 +138,7 @@ export function trendSvg(p: ProjectData, opts: { w: number; h: number; labels?: 
   const label = values.length
     ? `Composite by round: ${values.map((v, i) => `round ${s[i].round} ${fmt(v)}`).join(", ")}`
     : "No scored rounds yet";
-  return `<svg class="trend" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${esc(label)}">${parts.join("")}</svg>`;
+  return `<svg class="trend${opts.labels ? " trend-lg" : ""}" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${esc(label)}">${parts.join("")}</svg>`;
 }
 
 /** 0 to 10 meter with the 9.0 bar. */
