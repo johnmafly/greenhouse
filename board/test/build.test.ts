@@ -77,6 +77,10 @@ test("_headers keeps noindex first and allows the inline script by hash only", (
   const lines = headers.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#"));
   assert.equal(lines[0], "/*");
   assert.match(lines[1], /^\s+X-Robots-Tag:\s*noindex\b/i);
+  // Cloudflare Pages applied only the last of two `/*` rules, dropping noindex: keep a single rule
+  // and every header inside it.
+  assert.equal(lines.filter((l) => !/^\s/.test(l)).length, 1, "exactly one path rule");
+  assert.ok(lines.slice(1).every((l) => /^\s+\S+:/.test(l)), "every header belongs to the /* rule");
   const hash = createHash("sha256").update(INLINE_SCRIPT).digest("base64");
   const csp = /Content-Security-Policy: (.*)/.exec(headers)?.[1] ?? "";
   assert.match(csp, /default-src 'none'/);
