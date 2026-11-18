@@ -1,0 +1,33 @@
+name: path-guard
+# Submission PRs ("submission: <slug> round NN") may only add portfolio/<slug>/rounds/NN/submission.yaml.
+# Any other PR may not add or change a submission.yaml.
+#
+# pull_request_target runs this workflow and the guard code from the BASE branch, so a submission
+# cannot edit its own guard. It never checks out or runs code from the pull request: the title,
+# changed files and submission.yaml are read through the REST API with a read-only token.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: path-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  path-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check changed paths
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node cli/src/submit-guard.ts
