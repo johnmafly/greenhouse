@@ -19,8 +19,13 @@ import { contentType, parseR2Target, uploadBundle } from "../src/capture-r2.ts";
 import { CONTRACT_ROUTES, capture, parseRoutes, routeName } from "../src/capture.ts";
 import { CONTENT_KEYS, loadContentMap, parseContentMap, routesFromContentMap, stripAnchor, type ContentMap } from "../src/capture-routes.ts";
 import { motionTargets, pageSlug, stripPositions, type MotionEntry } from "../src/capture-motion.ts";
+import { WEBKIT_DIR, collectWebkitEvidence, type WebkitEvidence } from "../src/capture-webkit.ts";
+import { validate } from "../src/lib/schemas.ts";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "capture-content-map");
+// A round dir as `greenhouse check --round-dir` leaves it: checks.json with a webkit-iphone gate
+// (/ clean, /how-it-works/ with one problem) and its two fold screenshots.
+const WEBKIT_ROUND = join(import.meta.dirname, "fixtures", "capture-webkit", "round");
 
 async function bundleDir(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "gh-bundle-"));
@@ -319,8 +324,9 @@ test("capture writes a valid bundle for every route [browser]", { skip: browserS
     assert.equal(m.files.length, 19);
     const v = await verifyBundle(out);
     assert.deepEqual(v.errors, []);
-    assert.equal(m.schema_version, 2);
+    assert.equal(m.schema_version, 3);
     assert.equal(m.route_source, "routes_option");
+    assert.equal(m.webkit_iphone, null, "no webkit screenshots without --round-dir/--evidence-dir");
     assert.equal((m.pages as { content: unknown }[])[0].content, null);
 
     // Motion: home and /signup/ (fallback signup start), desktop and phone, plus one reduced-motion strip.
@@ -419,4 +425,120 @@ test("capture follows the content map and records what each page serves [browser
     server.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+describe("webkit-iphone evidence (greenhouse check's iPhone screenshots)", () => {
+  test("the fixture checks.json is a valid checks document", async () => {
+    const doc = JSON.parse(await readFile(join(WEBKIT_ROUND, "checks.json"), "utf8"));
+    assert.equal(validate("checks", doc).valid, true);
+  });
+
+  test("a round dir: copies every PNG and takes routes, problems and the gate result from checks.json", async () => {
+    const tmp = await mkdtemp(join(tmpdir(), "gh-webkit-"));
+    try {
+      const ev = await collectWebkitEvidence({ roundDir: WEBKIT_ROUND }, tmp, ["/"]);
+      assert.deepEqual(ev, {
+        source: "round_dir",
+        engine: "webkit",
+        device: "iPhone 15 Pro",
+        checked_sha: "a".repeat(40),
+        gate: { status: "fail", summary: "1 of 2 routes break in WebKit (iPhone 15 Pro): /how-it-works/: stylesheet has no CSS rules: /site.css" },
+        screenshots: [
+          { route: "/", path: "webkit-iphone/home.png", problems: [] },
+          { route: "/how-it-works/", path: "webkit-iphone/how-it-works.png", problems: ["stylesheet has no CSS rules: /site.css"] },
+        ],
+        notes: [],
+      } satisfies WebkitEvidence);
+      for (const f of ["home.png", "how-it-works.png"]) {
+        assert.deepEqual(await readFile(join(tmp, WEBKIT_DIR, f)), await readFile(join(WEBKIT_ROUND, "evidence", WEBKIT_DIR, f)));
+      }
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("an evidence dir (check without --round-dir): routes matched by file name, no gate", async () => {
+    const tmp = await mkdtemp(join(tmpdir(), "gh-webkit-"));
+    try {
+      const ev = await collectWebkitEvidence({ evidenceDir: join(WEBKIT_ROUND, "evidence") }, tmp, ["/", "/docs/"]);
+      assert.equal(ev.source, "evidence_dir");
+      assert.equal(ev.gate, null);
+      assert.equal(ev.checked_sha, null);
+      assert.deepEqual(ev.screenshots, [
+        { route: "/", path: "webkit-iphone/home.png", problems: null },
+        { route: null, path: "webkit-iphone/how-it-works.png", problems: null },
+      ]);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("no screenshots is a note, not an error; a non-PNG is refused; other files are ignored", async () => {
+    const tmp = await mkdtemp(join(tmpdir(), "gh-webkit-"));
+    const round = await mkdtemp(join(tmpdir(), "gh-webkit-round-"));
+    try {
+      const none = await collectWebkitEvidence({ roundDir: round }, tmp, ["/"]);
+      assert.deepEqual(none.screenshots, []);
+      assert.match(none.notes.join("\n"), /no checks.json with a webkit-iphone gate/);
+      assert.match(none.notes.join("\n"), /webkit-iphone\/ does not exist/);
+      assert.equal(existsSync(join(tmp, WEBKIT_DIR)), false);
+
+      await mkdir(join(round, "evidence", WEBKIT_DIR), { recursive: true });
+      await writeFile(join(round, "evidence", WEBKIT_DIR, "notes.txt"), "x");
+      const ignored = await collectWebkitEvidence({ roundDir: round }, tmp, ["/"]);
+      assert.deepEqual(ignored.screenshots, []);
+      assert.match(ignored.notes.join("\n"), /ignored webkit-iphone\/notes.txt/);
+
+      await writeFile(join(round, "evidence", WEBKIT_DIR, "home.png"), "not a png");
+      await assert.rejects(collectWebkitEvidence({ roundDir: round }, tmp, ["/"]), /is not a PNG/);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+      await rm(round, { recursive: true, force: true });
+    }
+  });
+
+  test("the CLI refuses --round-dir with --evidence-dir, and a round dir that does not exist", () => {
+    const cli = join(import.meta.dirname, "..", "src", "main.ts");
+    const both = spawnSync(process.execPath, [cli, "capture", "--url", "http://127.0.0.1:1/", "--out", join(tmpdir(), "gh-never"), "--round-dir", WEBKIT_ROUND, "--evidence-dir", WEBKIT_ROUND], { encoding: "utf8" });
+    assert.equal(both.status, 2);
+    assert.match(both.stderr, /mutually exclusive/);
+    const missing = spawnSync(process.execPath, [cli, "capture", "--url", "http://127.0.0.1:1/", "--out", join(tmpdir(), "gh-never"), "--round-dir", join(tmpdir(), "gh-no-such-round")], { encoding: "utf8" });
+    assert.equal(missing.status, 2);
+    assert.match(missing.stderr, /does not exist/);
+  });
+
+  test("capture puts the screenshots in the bundle, hashed, and records them in the manifest [browser]", { skip: browserSkip }, async () => {
+    const server = createServer((req, res) => {
+      if (req.url === "/.well-known/greenhouse.json") {
+        res.setHeader("content-type", "application/json");
+        return res.end(JSON.stringify({ slug: "fixture", sha: "b".repeat(40), built_at: "2026-11-18T00:00:00Z" }));
+      }
+      res.setHeader("content-type", "text/html");
+      res.end(PAGE(`Page ${req.url}`, `<p>${req.url}</p>`));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as { port: number }).port;
+    const root = await mkdtemp(join(tmpdir(), "gh-capture-webkit-"));
+    const out = join(root, "bundle");
+    try {
+      const m = await capture({ url: `http://127.0.0.1:${port}/`, out, routes: ["/", "/how-it-works/"], webkit: { roundDir: WEBKIT_ROUND }, motion: false, log: () => {} });
+      assert.equal(m.schema_version, 3);
+      const ev = m.webkit_iphone as WebkitEvidence;
+      assert.deepEqual(ev.screenshots.map((s) => [s.route, s.path]), [["/", "webkit-iphone/home.png"], ["/how-it-works/", "webkit-iphone/how-it-works.png"]]);
+      assert.equal(ev.gate?.status, "fail");
+      // The fixture checks.json is for sha aaaa..., the deployment reports bbbb...: noted, not fatal.
+      assert.match(ev.notes.join("\n"), /differs from the deployed sha/);
+      const files = new Map(m.files.map((f) => [f.path, f]));
+      for (const s of ev.screenshots) {
+        const buf = await readFile(join(WEBKIT_ROUND, "evidence", s.path));
+        assert.equal(files.get(s.path)?.sha256, sha256(buf), `${s.path} is hashed in files[]`);
+      }
+      assert.deepEqual((await verifyBundle(out)).errors, []);
+      await writeFile(join(out, "webkit-iphone/home.png"), "x");
+      assert.ok((await verifyBundle(out)).errors.includes("sha256 mismatch: webkit-iphone/home.png"));
+    } finally {
+      server.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

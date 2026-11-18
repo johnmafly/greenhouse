@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "slug": "fixture",
+  "round": 1,
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "deployment_url": "http://127.0.0.1/",
+  "cli_version": "0.0.0",
+  "tool_versions": {},
+  "machine": "fixture",
+  "started_at": "2026-11-18T00:00:00Z",
+  "finished_at": "2026-11-18T00:00:01Z",
+  "gates": [
+    {
+      "id": "webkit-iphone",
+      "class": "deterministic",
+      "status": "fail",
+      "summary": "1 of 2 routes break in WebKit (iPhone 15 Pro): /how-it-works/: stylesheet has no CSS rules: /site.css",
+      "metrics": { "routes": 2, "failing_routes": 1, "page_errors": 0, "failed_requests": 0, "screenshots": 2 },
+      "details": {
+        "device": "iPhone 15 Pro",
+        "engine": "webkit",
+        "routes": [
+          { "path": "/", "page_errors": [], "failed_requests": [], "csp_blocked": [], "empty_stylesheets": [], "fonts_not_loaded": [], "h1_font": null, "body_background": null, "screenshot": "webkit-iphone/home.png", "problems": [] },
+          { "path": "/how-it-works/", "page_errors": [], "failed_requests": [], "csp_blocked": [], "empty_stylesheets": ["/site.css"], "fonts_not_loaded": [], "h1_font": null, "body_background": null, "screenshot": "webkit-iphone/how-it-works.png", "problems": ["stylesheet has no CSS rules: /site.css"] }
+        ]
+      }
+    }
+  ],
+  "all_green": false
+}

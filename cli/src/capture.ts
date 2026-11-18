@@ -1,6 +1,7 @@
 // greenhouse capture: freeze an evidence bundle for a judged round.
 // Reviewers only ever see this bundle, never the live site (plan v7 section 5).
 import { parseArgs } from "node:util";
+import { existsSync } from "node:fs";
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -15,6 +16,7 @@ import {
 import { parseR2Target, uploadBundle } from "./capture-r2.ts";
 import { loadContentMap, routesFromContentMap, stripAnchor, type ContentMap, type ContentServe } from "./capture-routes.ts";
 import { DEFAULT_MOTION_TIMING, captureMotion, motionTargets, type MotionEntry, type MotionTiming } from "./capture-motion.ts";
+import { collectWebkitEvidence, type WebkitEvidence, type WebkitSource } from "./capture-webkit.ts";
 
 /**
  * Contract v1 routes. Used when the project declares no content map (greenhouse.yaml
@@ -39,7 +41,8 @@ export const VIEWPORTS = {
 
 const WELL_KNOWN = "/.well-known/greenhouse.json";
 // 2: pages[].content, route_source, content_map, motion[] (design bar v2).
-const MANIFEST_SCHEMA_VERSION = 2;
+// 3: webkit_iphone (greenhouse check's WebKit iPhone screenshots, copied into webkit-iphone/).
+const MANIFEST_SCHEMA_VERSION = 3;
 
 const USAGE = `greenhouse capture --url <deployment> --out <bundle dir> [options]
 greenhouse capture --verify <bundle dir>
@@ -47,7 +50,8 @@ greenhouse capture --verify <bundle dir>
 Freeze an evidence bundle: full-page screenshots of every route at desktop (1440x900)
 and mobile (390x844), the visible text of each page, motion evidence for the home page
 and the signup start (scroll video webm and 12-frame strip PNG at desktop and phone, plus
-a reduced-motion strip of the home page), and manifest.json with the sha256 of every file
+a reduced-motion strip of the home page), greenhouse check's WebKit iPhone screenshots when
+--round-dir or --evidence-dir names them, and manifest.json with the sha256 of every file
 and a bundle hash.
 
 Options:
@@ -61,6 +65,12 @@ Options:
                          or when the file has no content: map, the contract v1 routes are
                          captured and /signup/ is the signup start. A malformed map is an error.
   --routes <a,b,...>     Routes to capture instead (not with --greenhouse-yaml)
+  --round-dir <dir>      The round dir \`greenhouse check --round-dir\` wrote: its WebKit iPhone 15 Pro
+                         fold screenshots (<dir>/evidence/webkit-iphone/*.png) are copied into the
+                         bundle's webkit-iphone/, with each route, its problems and the gate result
+                         from <dir>/checks.json, recorded in the manifest's webkit_iphone
+  --evidence-dir <dir>   Instead of --round-dir, for a check run without one: the evidence dir
+                         holding webkit-iphone/ (~/.greenhouse/evidence/<slug>-<sha12>)
   --r2 <bucket>/<prefix> Also upload to R2 with content-addressed keys <prefix>/sha256/<hash>.
                          Needs CLOUDFLARE_API_TOKEN (and CLOUDFLARE_ACCOUNT_ID if the token
                          sees more than one account) in the environment.
@@ -209,6 +219,8 @@ export type CaptureOptions = {
   routes?: string[];
   /** greenhouse.yaml content map (contract v2); routes and the signup start come from it. */
   contentMap?: ContentMap | null;
+  /** Where greenhouse check saved its webkit-iphone screenshots; none copied without it. */
+  webkit?: WebkitSource | null;
   /** Motion evidence timing overrides, or false to skip motion (tests only). */
   motion?: false | Partial<MotionTiming>;
   timeoutMs?: number;
@@ -296,6 +308,17 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
       motion = await captureMotion({ browser, base, tmp, targets: motionTargets(signupStart), viewports: VIEWPORTS, headers, timing, timeoutMs: opts.timeoutMs ?? 45_000, log });
     }
 
+    let webkitIphone: WebkitEvidence | null = null;
+    if (opts.webkit) {
+      webkitIphone = await collectWebkitEvidence(opts.webkit, tmp, routes);
+      const deployedSha = (deployment as { sha?: unknown } | null)?.sha;
+      if (webkitIphone.checked_sha && typeof deployedSha === "string" && webkitIphone.checked_sha !== deployedSha) {
+        webkitIphone.notes.push(`checks.json sha ${webkitIphone.checked_sha} differs from the deployed sha ${deployedSha}`);
+      }
+      for (const n of webkitIphone.notes) log(`webkit-iphone: ${n}`);
+      log(`webkit-iphone: ${webkitIphone.screenshots.length} screenshot(s) copied`);
+    }
+
     const manifest = await buildManifest(tmp, {
       schema_version: MANIFEST_SCHEMA_VERSION,
       kind: "greenhouse-evidence-bundle",
@@ -311,6 +334,7 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
       pages,
       motion_timing: timing,
       motion,
+      webkit_iphone: webkitIphone,
     });
     await writeFile(join(tmp, MANIFEST_FILE), serializeManifest(manifest));
     await rm(out, { recursive: true, force: true }); // only an empty dir can exist here (assertUsableOut)
@@ -346,6 +370,8 @@ export async function main(argv: string[]): Promise<number> {
         out: { type: "string" },
         routes: { type: "string" },
         "greenhouse-yaml": { type: "string" },
+        "round-dir": { type: "string" },
+        "evidence-dir": { type: "string" },
         r2: { type: "string" },
         timeout: { type: "string" },
         verify: { type: "string" },
@@ -374,6 +400,7 @@ export async function main(argv: string[]): Promise<number> {
   let target;
   let routes;
   let contentMap: ContentMap | null = null;
+  let webkit: WebkitSource | null = null;
   try {
     target = args.r2 ? parseR2Target(args.r2) : null;
     if (args["greenhouse-yaml"] && args.routes) throw new Error("--routes and --greenhouse-yaml are mutually exclusive");
@@ -383,6 +410,11 @@ export async function main(argv: string[]): Promise<number> {
       if (!contentMap) process.stderr.write(`note: ${loaded.file} has no content: map; capturing the contract v1 routes\n`);
     }
     routes = contentMap || !args.routes ? undefined : parseRoutes(args.routes);
+    if (args["round-dir"] && args["evidence-dir"]) throw new Error("--round-dir and --evidence-dir are mutually exclusive");
+    if (args["round-dir"]) webkit = { roundDir: resolve(args["round-dir"]) };
+    else if (args["evidence-dir"]) webkit = { evidenceDir: resolve(args["evidence-dir"]) };
+    const webkitDir = webkit?.roundDir ?? webkit?.evidenceDir;
+    if (webkitDir && !existsSync(webkitDir)) throw new Error(`${webkitDir} does not exist`);
     if (target && !process.env.CLOUDFLARE_API_TOKEN) throw new Error("--r2 needs CLOUDFLARE_API_TOKEN in the environment");
   } catch (e) {
     process.stderr.write(`greenhouse capture: ${(e as Error).message}\n`);
@@ -390,7 +422,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   try {
     const out = resolve(args.out);
-    const manifest = await capture({ url: args.url, out, routes, contentMap, timeoutMs: args.timeout ? Number(args.timeout) : undefined });
+    const manifest = await capture({ url: args.url, out, routes, contentMap, webkit, timeoutMs: args.timeout ? Number(args.timeout) : undefined });
     const summary: Record<string, unknown> = { out, bundle_hash: manifest.bundle_hash, files: manifest.files.length };
     if (target) {
       const up = await uploadBundle(out, manifest, target);
