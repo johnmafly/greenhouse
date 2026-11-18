@@ -1,0 +1,3 @@
+# Every public factual claim on the site, with its source and a verbatim quote
+# (schema: schemas/claims.schema.json in johnmafly/greenhouse). Add one entry per claim.
+claims: []

@@ -31,10 +31,55 @@ The template in `template/` implements this structure with no visual design.
 ## Rules checked by gates
 
 - Every page has `<title>`, one `<h1>`, `lang` on `<html>`, no placeholder text (`lorem`, `TODO`, `TBD`, `[placeholder]`).
-- No broken internal links. External links in `claims.yaml` must resolve.
+- No broken internal links. External links in `claims.yaml` must resolve (`claim-links` gate):
+  - 2xx/3xx after redirects: pass.
+  - 401/403/429 ("refused automation"): `warn`, not fail, only if every claim citing the URL has a
+    non-empty `quote` and a `checked` date within 30 days of the check run; otherwise fail. A 429 is
+    retried once after a short backoff before it is classified.
+  - 404/410/other 4xx/5xx, DNS error, timeout: fail.
+  - The gate fails if more than 20% of the claim URLs refuse automation.
+  - Each URL is requested with a browser User-Agent, `HEAD` first and `GET` when `HEAD` does not
+    succeed. `checks.json` records every URL's status, class and citing claims so judges can
+    spot-check the refused ones.
 - Code samples in docs that call the product use `<pre><code data-op="operationId">`; every `operationId` must exist in the spec.
 - Sites are **public** (owner decision 2026-11-18) but send `X-Robots-Tag: noindex` (via `_headers`)
   and `<meta name="robots" content="noindex">` until the owner publishes at graduation.
 - No invented testimonials, logos, customer counts or quotes.
 - No text aimed at reviewers or hidden from humans.
 - No secrets anywhere in the repo or the build output.
+
+## Mock signup markup
+
+`/signup/` marks its flow so the `signup-flow` gate can walk it in a browser: each step's way
+forward is a visible `[data-signup-next]` (or `[data-next]`) control, or the visible form's submit button, and the
+last screen is a visible `[data-signup-final]` element whose text says it is a preview. The gate
+fills visible fields with test values, and fails if the flow sets cookies or storage or sends a
+non-GET request. The template's `/signup/` is a working example.
+
+## greenhouse check
+
+`greenhouse check --repo <path> [--url <deployment>] [--round-dir <dir>] [--canary-file <f>]` runs
+these deterministic gates and writes `checks.json` (`schemas/checks.schema.json`) to `<round-dir>/`,
+`--out`, or `~/.greenhouse/checks/<slug>-<sha12>.json`; it exits 1 if any gate fails. A gate that cannot run reports `fail` with the reason.
+
+| Gate | Checks |
+|---|---|
+| `build` | Clean checkout of the sha; `npm ci` when a lockfile exists; `build.command` succeeds with `CF_PAGES_COMMIT_SHA` set and no caller tokens in its environment; `build.output/index.html` exists. |
+| `package-files` | `greenhouse.yaml`, `STATE.md`, `claims.yaml` (schema-valid), `spec/openapi.yaml` or `spec/interface.md`. |
+| `claim-links` | Every `source_url` in `claims.yaml` resolves, per the policy above (refused automation: `warn` when quoted and checked within 30 days; over 20% refused: fail). |
+| `deployed-sha` | `/.well-known/greenhouse.json` reports the checked sha and slug. |
+| `routes` | Every route above returns HTML; `/docs/` links the five sections. |
+| `links` | Every same-origin link, image, script and stylesheet on every reachable page resolves. |
+| `page-structure` | Every page has `lang`, a `<title>` and exactly one `<h1>`. |
+| `placeholder` | No `lorem`, `TODO`, `TBD`, `[placeholder]`, "coming soon" or "coming in package vN" in visible text. |
+| `noindex` | Every page sends `X-Robots-Tag: noindex` and has the robots meta tag. |
+| `spec-samples` | Every `<code data-op>` sits in a `<pre>` and names an operation in the spec (no samples: `warn`). |
+| `secrets` | Secret patterns in committed files, build output and deployed pages (values never printed). |
+| `canary` | No canary string from `--canary-file` anywhere (`skip` without the flag). A failure carries the integrity cap (5.0, decision 0003). |
+| `axe` | axe-core on every page: no critical violations (serious: `warn`). |
+| `signup-flow` | The mock signup reaches its final preview screen, storing and sending nothing. |
+| `lighthouse` | Performance and accessibility on every route, median of 5 runs under `~/.greenhouse/perf.lock`: 90+ pass, 85-89 warn, under 85 fail. |
+
+Without `--url` the clean build is served locally the way Pages serves it (`_headers` included).
+Tool versions (Node, Playwright and its Chromium, axe-core, Lighthouse) are pinned in
+`package-lock.json` and recorded in `checks.json`.
