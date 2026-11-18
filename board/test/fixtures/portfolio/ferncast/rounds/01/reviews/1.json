@@ -6,17 +6,17 @@
     "family": "openai",
     "brief_version": "brief-v1"
   },
-  "rubric_version": 1,
+  "rubric_version": 2,
   "bundle_hash": "9b25201b3d1b04c9c49443ae6fea8ffc94f43123104c5c870c2af54a29140ef5",
   "scores": {
+    "design_identity": 7,
+    "motion_interaction": 7,
+    "copy_voice": 8,
+    "distinctness": 8,
     "conviction": 8,
     "docs_buildability": 8,
-    "site_craft": 7,
-    "distinctness": 8,
-    "comparison_honesty": 7,
-    "pricing_oss": 8,
     "evidence_truth": 7,
-    "signup_value": 8
+    "business_signup": 8
   },
   "findings": [
     {
@@ -30,6 +30,7 @@
   ],
   "flags": {
     "invented_social_proof": false,
-    "reviewer_instruction": false
+    "reviewer_instruction": false,
+    "template_structure": false
   }
 }

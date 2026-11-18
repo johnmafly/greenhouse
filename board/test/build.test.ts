@@ -144,7 +144,7 @@ test("judge report card lists tests 1 to 6 as not yet run and the versions in fo
     assert.ok(html.includes(name), name);
   }
   assert.equal(html.match(/Not yet run/g)?.length, 6);
-  assert.match(html, /v1: 8 dimensions/);
+  assert.match(html, /v2: 8 dimensions, weights Design 20%/);
   assert.match(html, /brief-v1/);
 });
 

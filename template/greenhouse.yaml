@@ -1,0 +1,7 @@
+# Greenhouse package manifest (contract v1, docs/package-contract.md in johnmafly/greenhouse).
+# Set slug to the project's slug from portfolio/<slug>/intake.yaml.
+slug: example-seed
+build:
+  command: npm run build
+  output: dist
+production_branch: main

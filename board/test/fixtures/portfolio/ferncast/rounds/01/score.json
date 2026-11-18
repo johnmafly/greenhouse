@@ -3,7 +3,7 @@
   "slug": "ferncast",
   "round": 1,
   "sha": "28c67f1a74840cc89767002660af305efa1e882b",
-  "rubric_version": 1,
+  "rubric_version": 2,
   "brief_version": "brief-v1",
   "provisional": true,
   "panel": [
@@ -24,21 +24,21 @@
     }
   ],
   "dimension_medians": {
+    "design_identity": 8,
+    "motion_interaction": 8,
+    "copy_voice": 8,
+    "distinctness": 8,
     "conviction": 8,
     "docs_buildability": 8,
-    "site_craft": 8,
-    "distinctness": 8,
-    "comparison_honesty": 8,
-    "pricing_oss": 8,
-    "evidence_truth": 7,
-    "signup_value": 8
+    "evidence_truth": 7.5,
+    "business_signup": 8
   },
   "reviewer_composites": {
-    "r-gemini": 7.55,
-    "r-grok": 7.7,
-    "r-openai": 7.65
+    "r-gemini": 7.8,
+    "r-grok": 7.6,
+    "r-openai": 7.55
   },
-  "composite_raw": 7.9,
+  "composite_raw": 7.95,
   "caps_applied": [
     {
       "reason": "failed_gate:links",
@@ -51,9 +51,9 @@
   "inputs": {
     "checks_sha256": "961a032abef481c7caee58f8d596d8c5605d372c170ea321a6e401cb0b9fe19c",
     "reviews_sha256": {
-      "1.json": "49db139fb2e8cfc296074f91e91cf40e161f3b846e8084d20650c0ad7fe70c6b",
-      "2.json": "d1868eb4b600dd82723531ea82705c91fa60e8e5752f82ce8e2911e8860878a0",
-      "3.json": "bf009f9028fe93bf4ca7fec03b6734aa9ae7c0f85836c66d1f25d5acba3cab71"
+      "1.json": "bf1c66bfa27b8da3503bd298699c120cb4e667a4fdc53e8545a7039086277c41",
+      "2.json": "7d97a9311a2a2e7dcdb60b197903be0309217d575eb2a1723d7ddd9d16d9709e",
+      "3.json": "0f0302b4c9678b5408654d49aadeb59223aee56e3be76cd8491e09be91402d9f"
     },
     "bundle_hash": "9b25201b3d1b04c9c49443ae6fea8ffc94f43123104c5c870c2af54a29140ef5"
   },

@@ -6,23 +6,23 @@
     "family": "xai",
     "brief_version": "brief-v1"
   },
-  "rubric_version": 1,
+  "rubric_version": 2,
   "bundle_hash": "9b25201b3d1b04c9c49443ae6fea8ffc94f43123104c5c870c2af54a29140ef5",
   "scores": {
+    "design_identity": 8,
+    "motion_interaction": 8,
+    "copy_voice": 7,
+    "distinctness": 7,
     "conviction": 7,
     "docs_buildability": 8,
-    "site_craft": 8,
-    "distinctness": 7,
-    "comparison_honesty": 8,
-    "pricing_oss": 8,
     "evidence_truth": 8,
-    "signup_value": 8
+    "business_signup": 8
   },
   "findings": [
     {
       "id": "r-grok-f1",
       "evidence": [],
-      "dimension": "site_craft",
+      "dimension": "design_identity",
       "severity": "should",
       "title": "Hero type is cramped on phones",
       "detail": "The headline wraps to five lines at 390px."
@@ -30,6 +30,7 @@
   ],
   "flags": {
     "invented_social_proof": false,
-    "reviewer_instruction": false
+    "reviewer_instruction": false,
+    "template_structure": false
   }
 }

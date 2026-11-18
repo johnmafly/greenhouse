@@ -12,13 +12,13 @@ Owner decisions that change v7 are recorded in [docs/decisions/0000-owner-decisi
 
 | Path | What |
 |---|---|
-| `rubric/` | Rubric versions (`rubric-v1.yaml`). Weights, anchors, caps, graduation rule. |
+| `rubric/` | The rubric in force (`rubric-v2.yaml`, decision 0004). Weights, anchors, caps, graduation rule. |
 | `schemas/` | JSON Schemas for every Greenhouse file (intake, submission, checks, review, score). |
 | `cli/` | The `greenhouse` CLI: `check`, `capture`, `submit`, `score`, `board`. Same gate code for Chiefs and the judge. |
 | `template/` | Unstyled project package template (structure only, never visual design). |
 | `board/` | Static leaderboard generated from Git; deployed by Cloudflare Pages from this repo. |
 | `portfolio/<slug>/` | `intake.yaml`, `rounds/NN/{submission.yaml,checks.json,reviews/,score.json,ruling.md}`, `feedback/`. |
-| `docs/` | `package-contract.md` (what a project must ship), `decisions/` (spikes and owner decisions). |
+| `docs/` | `package-contract.md` (what a project must ship), `design-bar.md` (what a good site looks like), `chief-brief.md`, `decisions/` (spikes and owner decisions). |
 | `ops/runbooks/` | Stuck round, failed build, token rotation, adding or replacing a Chief, publishing. |
 
 Judge material (reviewer briefs, validation set, answer key) lives in the private repo

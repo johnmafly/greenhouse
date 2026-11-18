@@ -83,16 +83,41 @@ test("YAML dates stay strings (format date applies)", () => {
   assert.equal(doc.approved_by_owner, "2026-11-18");
 });
 
-test("rubric v1 loads: 8 dimensions, weights sum to 1, caps 7.0 and 5.0", () => {
-  const r = loadRubric(1);
-  assert.equal(r.version, 1);
-  assert.equal(r.dimensions.length, 8);
+test("rubric v2 loads: 8 dimensions, design-led weights 0.65, caps 7.0, 6.0 and 5.0 (decision 0004)", () => {
+  const r = loadRubric(2);
+  assert.equal(r.version, 2);
+  assert.deepEqual(
+    r.dimensions.map((d) => [d.id, d.weight]),
+    [
+      ["design_identity", 0.2],
+      ["motion_interaction", 0.15],
+      ["copy_voice", 0.15],
+      ["distinctness", 0.15],
+      ["conviction", 0.1],
+      ["docs_buildability", 0.1],
+      ["evidence_truth", 0.1],
+      ["business_signup", 0.05],
+    ],
+  );
   assert.ok(Math.abs(r.dimensions.reduce((s, d) => s + d.weight, 0) - 1) < 1e-9);
-  assert.deepEqual(r.caps.map((c) => [c.id, c.max]), [["quality", 7], ["integrity", 5]]);
+  assert.ok(r.dimensions.every((d) => d.nine && !/v1 text/.test(d.nine)));
+  assert.deepEqual(r.caps.map((c) => [c.id, c.max]), [["quality", 7], ["sameness", 6], ["integrity", 5]]);
+  assert.deepEqual(r.graduation.focus_dimensions, ["design_identity", "motion_interaction", "copy_voice", "distinctness"]);
+  assert.equal(r.graduation.focus_median_min, 8.5);
+  assert.equal(loadRubric().version, 2); // the default is the current rubric
+});
+
+test("rubric: focus_dimensions must name dimensions and needs focus_median_min", () => {
+  const r = readDocument("rubric/rubric-v2.yaml") as { graduation: Record<string, unknown> };
+  (r.graduation.focus_dimensions as string[]).push("site_craft");
+  assert.match(validate("rubric", r).errors.join("\n"), /'site_craft' is not a dimension/);
+  const r2 = readDocument("rubric/rubric-v2.yaml") as { graduation: Record<string, unknown> };
+  delete r2.graduation.focus_median_min;
+  assert.equal(validate("rubric", r2).valid, false);
 });
 
 test("rubric: weights that do not sum to 1 are rejected", () => {
-  const r = readDocument("rubric/rubric-v1.yaml") as { dimensions: { weight: number }[] };
+  const r = readDocument("rubric/rubric-v2.yaml") as { dimensions: { weight: number }[] };
   r.dimensions[0].weight = 0.3;
   const v = validate("rubric", r);
   assert.equal(v.valid, false);
@@ -106,7 +131,7 @@ test("inferSchema maps Greenhouse file names", () => {
   assert.equal(inferSchema("portfolio/x/rounds/01/checks.json"), "checks");
   assert.equal(inferSchema("portfolio/x/rounds/01/reviews/2.json"), "review");
   assert.equal(inferSchema("portfolio/x/rounds/01/score.json"), "score");
-  assert.equal(inferSchema("rubric/rubric-v1.yaml"), "rubric");
+  assert.equal(inferSchema("rubric/rubric-v2.yaml"), "rubric");
   assert.equal(inferSchema("schemas/score.schema.json"), undefined);
   assert.equal(inferSchema("README.md"), undefined);
 });
@@ -156,4 +181,15 @@ test("every committed portfolio file with a known schema validates", () => {
     const r = validateFile(f);
     assert.deepEqual(r.errors, [], f);
   }
+});
+
+test("review v2: the template_structure flag is required and boolean (decision 0004)", () => {
+  const ok = readDocument(join(FIX, "review", "valid", "review.json")) as { flags: Record<string, unknown> };
+  assert.equal(validate("review", structuredClone(ok)).valid, true);
+  const missing = structuredClone(ok);
+  delete missing.flags.template_structure;
+  assert.match(validate("review", missing).errors.join("\n"), /template_structure/);
+  const wrong = structuredClone(ok);
+  wrong.flags.template_structure = "yes";
+  assert.equal(validate("review", wrong).valid, false);
 });

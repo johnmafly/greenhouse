@@ -1,0 +1,11 @@
+{
+  "name": "example-seed-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Greenhouse project package: introduction site, docs, pricing, mock signup and build spec",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  }
+}

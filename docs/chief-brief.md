@@ -1,4 +1,4 @@
-# Chief brief (v1)
+# Chief brief (v2)
 
 The contract between VC Joe (who runs Greenhouse) and a Chief (one Reason per seed, which owns
 that seed's product and package). From plan v7 section 8, adjusted by owner decisions in
@@ -10,10 +10,30 @@ to each Chief when its seed is onboarded; it is not sent by any other route.
 The product and its package: the project repo (for BotRampart, `johnmafly/botrampart-site`), its
 site, docs, pricing, mock signup, build spec (`spec/openapi.yaml`), claims ledger (`claims.yaml`)
 and `STATE.md`. What a package must contain is in [package-contract.md](package-contract.md); how it
-is scored is in `rubric/`. The intake (`portfolio/<slug>/intake.yaml`) fixes your intent, buyer,
+is scored is in `rubric/rubric-v2.yaml`, and what a good site looks like is in
+[design-bar.md](design-bar.md). The intake (`portfolio/<slug>/intake.yaml`) fixes your intent, buyer,
 open-source model, locked assumptions, non-goals, budget and exposure.
 
 You do not own Greenhouse, scores, other projects, or any Cloudflare setting.
+
+## Design is the job (decision 0004)
+
+Design, motion, copy and distinctness make up 65% of the score, and each needs a panel median of
+8.5 to graduate. The owner's words on BotRampart v1: "how come every product site looks the
+same?"
+
+- **The example sections are content, not structure.** Pricing, docs and a comparison must
+  exist, but the owner named them as examples of what to cover, not as the site's nav or
+  skeleton. The information architecture is your design: build the home page and nav around
+  your product's own story, then declare where each required piece lives in `greenhouse.yaml`
+  (`content:`).
+- **The template is a working example, not a starting layout.** A site whose structure or look
+  is template output (a stock hero + feature grid + pricing table, the example sections as the
+  skeleton, or near-identical to the template or a sibling project) is capped at 6.0 when a
+  majority of reviewers flag it.
+- **Motion has to explain, and it has to degrade.** Reviewers see scroll recordings and frame
+  strips. Respect `prefers-reduced-motion`, and keep content visible without JavaScript. The
+  gates fail otherwise.
 
 ## Steps
 
@@ -24,7 +44,7 @@ You do not own Greenhouse, scores, other projects, or any Cloudflare setting.
 | Build | You build the package. Keep `STATE.md` current. Preview locally and run `greenhouse check` (preflight) as often as you like: it is free and uses no round. | Preflight green. |
 | Submit | `greenhouse submit` opens a pull request in `johnmafly/greenhouse` that adds only `portfolio/<slug>/rounds/NN/submission.yaml` (SUBMIT). Mark it ready for review. | You receive a RULING. |
 | Revise | Address the findings, not just the top three enhancements. You may reject an enhancement with a reason; the next blind panel decides who was right. | Next submission, or the round budget is spent. |
-| Cold read | At a score of 9.0 or more VC Joe brings the package to the owner. | The owner graduates it or marks changes (OWNER FEEDBACK). |
+| Cold read | When the package meets graduation v2 (composite 9.0 or more, design, motion, copy and distinctness each 8.5 or more) VC Joe brings it to the owner. | The owner graduates it or marks changes (OWNER FEEDBACK). |
 | Hand-off | Tag `graduation-v1`, write `GRADUATION.md` (links, spec, prediction, open risks). The owner decides publication and build kickoff. | Package frozen. |
 
 At most one judged round per project per day. Unchanged content returns the previous ruling.

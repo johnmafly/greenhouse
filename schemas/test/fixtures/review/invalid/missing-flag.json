@@ -6,17 +6,17 @@
     "family": "openai",
     "brief_version": "brief-v1"
   },
-  "rubric_version": 1,
+  "rubric_version": 2,
   "bundle_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   "scores": {
+    "design_identity": 8,
+    "motion_interaction": 7,
+    "copy_voice": 8,
+    "distinctness": 8,
     "conviction": 8,
     "docs_buildability": 8,
-    "site_craft": 8,
-    "distinctness": 8,
-    "comparison_honesty": 8,
-    "pricing_oss": 8,
     "evidence_truth": 8,
-    "signup_value": 8
+    "business_signup": 8
   },
   "findings": [
     {

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Example Seed: a Greenhouse seed package.">
+    <title>Sign up | Example Seed</title>
+  </head>
+  <body>
+    <header>
+      <nav aria-label="Main">
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/pricing/">Pricing</a></li>
+          <li><a href="/signup/">Sign up</a></li>
+        </ul>
+      </nav>
+    </header>
+    <main>
+      <h1>Sign up</h1>
+      <p>A preview of signing up. It asks for nothing real and stores nothing.</p>
+      <section data-signup-step="1" aria-labelledby="step-1">
+        <h2 id="step-1">Step 1 of 2: your email</h2>
+        <form data-signup-form>
+          <label for="email">Work email</label>
+          <input id="email" name="email" type="email" autocomplete="email" required>
+          <button type="submit" data-signup-next>Continue</button>
+        </form>
+      </section>
+      <section data-signup-step="2" aria-labelledby="step-2" hidden>
+        <h2 id="step-2">Step 2 of 2: your first project</h2>
+        <form data-signup-form>
+          <label for="project">Project name</label>
+          <input id="project" name="project" type="text" required>
+          <button type="submit" data-signup-next>Create project</button>
+        </form>
+      </section>
+      <section data-signup-final aria-labelledby="done" hidden>
+        <h2 id="done">Your first project is ready</h2>
+        <p>This is a preview: nothing you entered was sent or stored. In the real product this screen shows the first result.</p>
+      </section>
+    </main>
+    <footer>
+      <p>Example Seed is a Greenhouse seed: a preview of a product that is not built yet.</p>
+    </footer>
+    <script>
+      // Moves through the steps in the page. Sends and stores nothing.
+      const steps = [...document.querySelectorAll("[data-signup-step], [data-signup-final]")];
+      document.querySelectorAll("[data-signup-form]").forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const current = form.closest("section");
+          const next = steps[steps.indexOf(current) + 1];
+          current.hidden = true;
+          next.hidden = false;
+          next.querySelector("input, h2")?.focus();
+        });
+      });
+    </script>
+  </body>
+</html>
