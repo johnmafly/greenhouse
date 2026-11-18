@@ -15,6 +15,7 @@ import { CAP_GATES } from "../src/lib/score.ts";
 import {
   ASSISTED_GATE_IDS,
   claimSweepGate,
+  challengeVendor,
   claimsGate,
   hiddenTextGate,
   pricingGate,
@@ -126,6 +127,11 @@ const SOURCES: Record<string, [number, string, string]> = {
   "/gone": [404, "text/html", "not found"],
   "/refused": [403, "text/html", "forbidden"],
   "/pdf": [200, "application/pdf", "%PDF-1.7 binary"],
+  // Bot challenges served with 200 in place of the source (Imperva's, as imperva.com served it).
+  "/imperva": [200, "text/html", "<html><head><noscript><title>Pardon Our Interruption</title></noscript></head><body><h1>Pardon Our Interruption</h1><p>As you were browsing something about your browser made us think you were a bot.</p><script src=\"/_Incapsula_Resource?SWJIYLWA=1\"></script></body></html>"],
+  "/cf-challenge": [200, "text/html", "<html><head><title>Just a moment...</title></head><body><script src=\"/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1\"></script></body></html>"],
+  // A real article that also loads a Cloudflare challenge script: the quote is there, so it passes.
+  "/article-cf": [200, "text/html", "<html><body><p>In 2025, automated traffic made up 51% of all web traffic.</p><script src=\"/cdn-cgi/challenge-platform/scripts/jsd/main.js\"></script></body></html>"],
 };
 
 async function sourceServer(): Promise<{ url: (p: string) => string; close: () => Promise<void> }> {
@@ -175,6 +181,7 @@ test("claims: supported claims pass with the source archived; each failure class
       ["unsupported", claim("u", s.url("/ok")), () => "no", "unsupported"],
       ["not_both_judges", claim("n", s.url("/ok")), "split", "not_both_judges"],
       ["refused, stale check date", claim("r", s.url("/refused"), "anything", "2026-01-01"), () => "yes", "source_unverifiable"],
+      ["bot challenge, stale check date", claim("c", s.url("/imperva"), undefined, "2026-01-01"), () => "yes", "source_unverifiable"],
     ];
     for (const [name, c, rule, cls] of cases) {
       const g = await claimsGate(ledgerDir([c]), rule === "split" ? splitPair() : pair(rule), { now, archiveDir: null });
@@ -186,6 +193,20 @@ test("claims: supported claims pass with the source archived; each failure class
       const g = await claimsGate(ledgerDir([claim("r", s.url(p))]), pair(() => "yes"), { now, archiveDir: null });
       assert.equal(g.status, "warn", `${p}: ${g.summary}`);
     }
+    // A bot challenge served with 200 is refused automation, not a missing quote: warn when fresh.
+    for (const [p, vendor] of [["/imperva", "Imperva"], ["/cf-challenge", "Cloudflare"]]) {
+      const g = await claimsGate(ledgerDir([claim("c", s.url(p))]), pair(() => "yes"), { now, archiveDir: null });
+      assert.equal(g.status, "warn", `${p}: ${g.summary}`);
+      const c = (g.details as { claims: { class: string; challenge?: string; why: string }[] }).claims[0];
+      assert.equal(c.class, "source_unverifiable", p);
+      assert.equal(c.challenge, vendor, p);
+      assert.match(c.why, new RegExp(`bot challenge \\(${vendor}, 200\\)`), p);
+    }
+    // A page carrying the quote passes even when it loads a challenge script.
+    const article = await claimsGate(ledgerDir([claim("a", s.url("/article-cf"))]), pair(() => "yes"), { now, archiveDir: null });
+    assert.equal(article.status, "pass", article.summary);
+    // A real page without the quote still fails.
+    assert.equal(challengeVendor(SOURCES["/wrong"][2]), null);
     // The judges never see a claim whose quote is missing from its source.
     const judges = pair(() => "yes");
     await claimsGate(ledgerDir([claim("w", s.url("/wrong"))]), judges, { now, archiveDir: null });
