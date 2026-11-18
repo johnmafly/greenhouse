@@ -27,6 +27,7 @@ import { codeSamples, fragmentIds, h1Count, headingOutline, htmlLang, navLabels,
 import { classifyRoute, classifyScore, lighthouseGate, medianOf } from "../src/check/lighthouse.ts";
 import { jaccard, readSiblings, signatureOf, similarity, templateLikenessGate, templateSignature } from "../src/check/likeness.ts";
 import { REQUIRED_ROUTES } from "../src/check/site.ts";
+import { assetCacheGate, cachePolicy, cssAssets, fingerprinted, jsImports, pageAssets } from "../src/check/assets.ts";
 import type { LhRun } from "../src/check/lighthouse.ts";
 import { LockTimeoutError, acquireLock } from "../src/check/lock.ts";
 import { headersFor, parseHeaders, serveStatic } from "../src/check/serve.ts";
@@ -553,7 +554,7 @@ test("lighthouse: median of runs; performance >= 90, CLS <= 0.1, TBT <= 200 ms e
 // --- whole check, no browser ------------------------------------------------------------------
 
 test("gate ids that carry a named cap in score.ts are not reused by deterministic gates, except canary and reduced-motion", () => {
-  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "template-likeness", "secrets", "axe", "signup-flow", "no-js-content", "lighthouse"];
+  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "template-likeness", "secrets", "asset-cache", "axe", "signup-flow", "no-js-content", "webkit-iphone", "lighthouse"];
   for (const id of ids) assert.ok(!(id in CAP_GATES), id);
   // A failed canary gate carries the integrity cap (5.0), reason canary_leak (decision 0003).
   assert.deepEqual(CAP_GATES["canary"], { cap: "integrity", reason: "canary_leak" });
@@ -572,7 +573,7 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
     assert.equal(checks.slug, "example-seed");
     assert.equal(checks.all_green, false);
     const by = Object.fromEntries(checks.gates.map((g) => [g.id, g]));
-    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets"])
+    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets", "asset-cache"])
       assert.equal(by[id].status, "pass", `${id}: ${by[id].summary}`);
     assert.equal(by.canary.status, "skip");
     // The template is the template: near-identity by definition.
@@ -581,7 +582,9 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
       assert.equal(by[id].status, "fail", id);
       assert.match(by[id].summary, /browser unavailable/);
     }
-    for (const t of ["node", "playwright", "axe-core", "lighthouse", "chromium"]) assert.ok(checks.tool_versions[t], t);
+    assert.equal(by["webkit-iphone"].status, "fail");
+    assert.match(by["webkit-iphone"].summary, /WebKit unavailable/);
+    for (const t of ["node", "playwright", "axe-core", "lighthouse", "chromium", "webkit"]) assert.ok(checks.tool_versions[t], t);
   } finally {
     if (prev === undefined) delete process.env.GREENHOUSE_SKIP_BROWSER;
     else process.env.GREENHOUSE_SKIP_BROWSER = prev;
@@ -645,4 +648,123 @@ test("greenhouse check CLI: without --out or --round-dir, writes ~/.greenhouse/c
   assert.ok(existsSync(out), r.stderr);
   assert.ok(validate("checks", JSON.parse(readFileSync(out, "utf8"))).valid);
   assert.ok(!existsSync(join(dir, "checks.json")), "nothing written into the project repo");
+});
+
+// --- asset-cache ------------------------------------------------------------------------------
+
+test("asset-cache helpers: fingerprints, cache policies, CSS fonts and JS imports", () => {
+  for (const u of ["/assets/site.3f9a1c2b.css", "/assets/index-BxK3a9Zq.js", "/assets/home-4d5e6f70a1.mjs", "/assets/font_9c8b7a6d.woff2", "/assets/site.css?v=3f9a1c2", "/a/app.js?h=0123abcd9"])
+    assert.ok(fingerprinted(u), u);
+  for (const u of ["/assets/site.css", "/assets/economics.mjs", "/assets/bootstrap5.css", "/assets/site.css?v=2", "/assets/site-v2final.css", "/assets/inter-variable.woff2"])
+    assert.ok(!fingerprinted(u), u);
+  assert.equal(cachePolicy("public, max-age=14400").revalidates, false);
+  assert.equal(cachePolicy("public, max-age=31536000, immutable").revalidates, false);
+  assert.equal(cachePolicy(undefined).revalidates, false);
+  assert.equal(cachePolicy("no-cache").revalidates, true);
+  assert.equal(cachePolicy("public, max-age=0, must-revalidate").revalidates, true);
+  assert.equal(cachePolicy("no-store").revalidates, true);
+  const o = "https://s.example";
+  assert.deepEqual(
+    pageAssets('<link rel="stylesheet" href="/assets/site.css"><link rel="preload" as="font" href="/f.woff2" crossorigin><link rel="modulepreload" href="/m.js"><script src="/a.js" defer></script><script type="module" src="./home.js"></script><script src="https://cdn.example/x.js"></script><link rel="icon" href="/favicon.ico">', `${o}/docs/`, o, "/docs/").map((a) => `${a.kind} ${a.url}`),
+    [`stylesheet ${o}/assets/site.css`, `font ${o}/f.woff2`, `module ${o}/m.js`, `script ${o}/a.js`, `module ${o}/docs/home.js`],
+  );
+  assert.deepEqual(
+    cssAssets('@import url("/base.css"); /* @font-face { src: url(/old.woff2) } */ @font-face { font-family: X; src: local("X"), url(../fonts/x.woff2) format("woff2"); } .a { background: url(/bg.png) }', `${o}/assets/site.css`, o).map((a) => `${a.kind} ${a.url}`),
+    [`stylesheet ${o}/base.css`, `font ${o}/fonts/x.woff2`],
+  );
+  assert.deepEqual(
+    jsImports('import { cost } from "./economics.mjs";\nimport "./side.js";\nexport { y } from "/lib/y.js";\nconst m = await import("./lazy.mjs");\nimport x from "bare-pkg";\n// import "./commented.js"', `${o}/assets/home.js`, o).map((a) => a.url),
+    [`${o}/assets/economics.mjs`, `${o}/assets/side.js`, `${o}/lib/y.js`, `${o}/assets/lazy.mjs`],
+  );
+});
+
+/** Home page loading the given asset files (written under assets/), with a _headers rule for /assets/*. */
+function withAssets(files: Record<string, string>, head: string, cacheControl: string | null): (d: string) => void {
+  return (d) => {
+    mkdirSync(join(d, "assets"), { recursive: true });
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(d, "assets", name), body);
+    edit(join(d, "index.html"), (s) => s.replace("</head>", `${head}</head>`));
+    if (cacheControl) edit(join(d, "_headers"), (s) => `${s}\n/assets/*\n  Cache-Control: ${cacheControl}\n`);
+  };
+}
+
+test("asset-cache: the template (no external assets) passes", async () => {
+  const ok = await serveSite();
+  try {
+    const g = await assetCacheGate(ok.site);
+    assert.equal(g.status, "pass", g.summary);
+    assert.equal(g.metrics?.assets, 0);
+  } finally {
+    await ok.close();
+  }
+  assert.match((await assetCacheGate(null, "the build failed")).summary, /cannot run: the build failed/);
+});
+
+test("asset-cache: an unversioned stylesheet served for 4 hours fails (BotRampart v2 on iPhone)", async () => {
+  const s = await serveSite(withAssets({ "site.css": "body { color: #111 }" }, '<link rel="stylesheet" href="/assets/site.css">', "public, max-age=14400"));
+  try {
+    const g = await assetCacheGate(s.site);
+    assert.equal(g.status, "fail", g.summary);
+    assert.match(g.summary, /\/assets\/site\.css \(cache-control: public, max-age=14400\)/);
+    const off = (g.details as { offenders: { url: string; cache_control: string }[] }).offenders;
+    assert.deepEqual(off.map((o) => [o.url, o.cache_control]), [["/assets/site.css", "public, max-age=14400"]]);
+  } finally {
+    await s.close();
+  }
+});
+
+test("asset-cache: fingerprinted assets with a long max-age pass, including their module imports and fonts", async () => {
+  const s = await serveSite(
+    withAssets(
+      {
+        "site.3f9a1c2b.css": '@font-face { font-family: Brand; src: url(/assets/brand.9c8b7a6d.woff2) format("woff2"); } body { font-family: Brand }',
+        "brand.9c8b7a6d.woff2": "font",
+        "home.4d5e6f70.js": 'import { cost } from "./economics.0a1b2c3d.mjs"; console.log(cost);',
+        "economics.0a1b2c3d.mjs": "export const cost = 1;",
+      },
+      '<link rel="stylesheet" href="/assets/site.3f9a1c2b.css"><script type="module" src="/assets/home.4d5e6f70.js"></script>',
+      "public, max-age=31536000, immutable",
+    ),
+  );
+  try {
+    const g = await assetCacheGate(s.site);
+    assert.equal(g.status, "pass", g.summary);
+    assert.equal(g.metrics?.assets, 4);
+    assert.equal(g.metrics?.fingerprinted, 4);
+  } finally {
+    await s.close();
+  }
+});
+
+test("asset-cache: unversioned assets pass with no-cache; an unversioned module behind a fingerprinted one fails as immutable", async () => {
+  const revalidated = await serveSite(withAssets({ "site.css": "body{}", "site.js": "1" }, '<link rel="stylesheet" href="/assets/site.css"><script src="/assets/site.js"></script>', "no-cache"));
+  try {
+    const g = await assetCacheGate(revalidated.site);
+    assert.equal(g.status, "pass", g.summary);
+    assert.equal(g.metrics?.revalidated, 2);
+  } finally {
+    await revalidated.close();
+  }
+  // home.<hash>.js is fine, but the economics.mjs it imports is unversioned and served immutable.
+  const reverse = await serveSite(
+    withAssets({ "home.4d5e6f70.js": 'import "./economics.mjs";', "economics.mjs": "export {}" }, '<script type="module" src="/assets/home.4d5e6f70.js"></script>', "public, max-age=31536000, immutable"),
+  );
+  try {
+    const g = await assetCacheGate(reverse.site);
+    assert.equal(g.status, "fail", g.summary);
+    const off = (g.details as { offenders: { url: string; reason: string }[] }).offenders;
+    assert.deepEqual(off.map((o) => o.url), ["/assets/economics.mjs"]);
+    assert.match(off[0].reason, /immutable on an unversioned URL/);
+  } finally {
+    await reverse.close();
+  }
+  // No Cache-Control at all: browsers cache heuristically.
+  const none = await serveSite(withAssets({ "site.css": "body{}" }, '<link rel="stylesheet" href="/assets/site.css">', null));
+  try {
+    const g = await assetCacheGate(none.site);
+    assert.equal(g.status, "fail", g.summary);
+    assert.match(g.summary, /no Cache-Control/);
+  } finally {
+    await none.close();
+  }
 });

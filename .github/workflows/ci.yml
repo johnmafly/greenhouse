@@ -12,5 +12,7 @@ jobs:
         with:
           node-version: 24
       - run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
+      # WebKit for the webkit-iphone tests (Chromium tests still skip here with SKIP(browser)).
+      - run: npx playwright install --with-deps webkit
       - run: npm test
       - run: npm run board:build

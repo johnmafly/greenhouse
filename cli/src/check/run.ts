@@ -7,6 +7,7 @@ import { basename, join, resolve } from "node:path";
 import type { Browser } from "playwright";
 import { REPO_ROOT, assertValid, readDocument } from "../lib/schemas.ts";
 import type { Checks, Gate, Submission } from "../lib/schemas.ts";
+import { assetCacheGate } from "./assets.ts";
 import { axeGate, browserAvailable, launchBrowser, signupGate } from "./browser.ts";
 import { cleanBuild, git, scanCorpus } from "./build.ts";
 import { claimLinksGate } from "./claim-links.ts";
@@ -35,6 +36,8 @@ import { serveStatic } from "./serve.ts";
 import type { StaticServer } from "./serve.ts";
 import { crawl, htmlPages, normalizeBase } from "./site.ts";
 import type { Site } from "./site.ts";
+import { greenhouseHome } from "./lock.ts";
+import { webkitIphoneGate } from "./webkit.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -55,6 +58,8 @@ export interface CheckOptions {
   siblings?: string[];
   /** claim-links tuning (timeouts, 429 backoff); `now` defaults to the check start. */
   claimLinks?: ClaimLinkOptions;
+  /** Evidence directory (webkit-iphone screenshots); default <round-dir>/evidence, else ~/.greenhouse/evidence/<slug>-<sha12>. */
+  evidenceDir?: string;
   /** Progress lines (default: none). */
   log?: (line: string) => void;
 }
@@ -92,6 +97,13 @@ export function toolVersions(): Record<string, string> {
     out.chromium = `${c.browserVersion} (playwright revision ${c.revision})`;
   } catch {
     out.chromium = "unavailable";
+  }
+  try {
+    const browsers = JSON.parse(readFileSync(join(REPO_ROOT, "node_modules", "playwright-core", "browsers.json"), "utf8"));
+    const w = browsers.browsers.find((b: { name: string }) => b.name === "webkit");
+    out.webkit = `${w.browserVersion} (playwright revision ${w.revision})`;
+  } catch {
+    out.webkit = "unavailable";
   }
   const gitV = spawnSync("git", ["--version"], { encoding: "utf8" });
   out.git = gitV.status === 0 ? gitV.stdout.trim().replace(/^git version /, "") : "unavailable";
@@ -196,6 +208,7 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     if (url && site) for (const p of site.pages.values()) if (p.body) corpus.push({ name: `deployed:${p.path}`, text: p.body });
     push(secretsGate(corpus));
     push(canaryGate(canaries, corpus, canaryError));
+    push(await assetCacheGate(site, why));
 
     let browserWhy = why;
     if (site) {
@@ -213,6 +226,8 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     push(await signupGate(browser, site ? base : null, browserWhy, 12, signupStart(content)));
     push(await reducedMotionGate(browser, site ? base : null, browserWhy));
     push(await noJsContentGate(browser, site ? base : null, contentSections(content), browserWhy));
+    const evidenceDir = opts.evidenceDir ?? (opts.roundDir ? join(opts.roundDir, "evidence") : join(greenhouseHome(), "evidence", `${slug}-${sha.slice(0, 12)}`));
+    push(await webkitIphoneGate(site ? base : null, start.routes, why, { evidenceDir, chromium: browser }));
     if (browser) {
       await browser.close().catch(() => undefined);
       browser = null;
