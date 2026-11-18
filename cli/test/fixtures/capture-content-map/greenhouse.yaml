@@ -1,0 +1,14 @@
+# Fixture: contract v2 content map (pricing and integration share pages through anchors).
+slug: capture-fixture
+build:
+  command: npm run build
+  output: dist
+production_branch: main
+content:
+  how_it_works: /how-it-works/
+  getting_started: /docs/start/
+  architecture: /docs/architecture/
+  integration: /docs/start/#integrate
+  comparison: /vs/
+  pricing: /#plans
+  signup: /try/

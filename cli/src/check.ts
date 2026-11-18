@@ -6,11 +6,16 @@ import { greenhouseHome } from "./check/lock.ts";
 import { CheckUsageError, runCheck } from "./check/run.ts";
 
 export const CHECK_USAGE = `greenhouse check --repo <path> [--url <deployment>] [--round-dir <dir>] [--canary-file <f>]
-                 [--out <file>] [--sha <sha>] [--round <n>] [--lighthouse-runs <n>]
+                 [--out <file>] [--sha <sha>] [--round <n>] [--lighthouse-runs <n>] [--sibling <checks.json>]...
 
 Runs every deterministic gate against a project package and writes checks.json:
   build, package-files, claim-links, deployed-sha, routes, links, page-structure, placeholder, noindex,
-  spec-samples, secrets, canary, axe, signup-flow, lighthouse.
+  spec-samples, template-likeness, secrets, canary, axe, signup-flow, reduced-motion, no-js-content,
+  lighthouse.
+
+Routes, the crawl, no-js-content, the signup start and Lighthouse follow the content map in
+greenhouse.yaml (contract v2); without one they fall back to the v1 route list (warn).
+--sibling (repeatable) compares template-likeness with another project's checks.json.
 
 The repo is built from a clean checkout of the commit (default: HEAD, or the sha in
 <round-dir>/submission.yaml). Without --url (or a submission deployment_url) the build output
@@ -34,6 +39,7 @@ export async function run(argv: string[]): Promise<number> {
         sha: { type: "string" },
         round: { type: "string" },
         "lighthouse-runs": { type: "string" },
+        sibling: { type: "string", multiple: true },
         help: { type: "boolean", short: "h", default: false },
       },
     }));
@@ -64,6 +70,7 @@ export async function run(argv: string[]): Promise<number> {
       sha: values.sha,
       round: int(values.round, "--round"),
       lighthouseRuns: int(values["lighthouse-runs"], "--lighthouse-runs"),
+      siblings: values.sibling,
       log: (line) => process.stderr.write(line + "\n"),
     });
     const out = resolve(

@@ -77,31 +77,45 @@ export async function axeGate(browser: Browser | null, base: string | null, path
   return gate(id, "pass", `no critical or serious axe violations on ${paths.length} pages`, metrics, results.some((r) => r.violations.length) ? details : undefined);
 }
 
+/** Cloudflare Web Analytics posts its beacon to the site's own /cdn-cgi/rum; the edge injects it. */
+export function isCloudflareRum(method: string, url: string, origin: string): boolean {
+  try {
+    const u = new URL(url);
+    return method === "POST" && u.origin === origin && (u.pathname === "/cdn-cgi/rum" || u.pathname.startsWith("/cdn-cgi/rum/"));
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Signup flow (contract): start at /signup/, fill the visible fields, press the step's
+ * Signup flow (contract): start at content.signup (v1: /signup/), fill the visible fields, press the step's
  * `[data-signup-next]` (or `[data-next]`) control (or the visible form's submit button) until a visible
  * `[data-signup-final]` screen appears that says it is a preview. Nothing may be stored
- * (cookies, localStorage, sessionStorage) and nothing may be sent (no non-GET requests).
+ * (cookies, localStorage, sessionStorage) and nothing may be sent (no non-GET requests, except
+ * Cloudflare Web Analytics' same-origin `POST /cdn-cgi/rum` beacon, which is listed as ignored).
  */
-export async function signupGate(browser: Browser | null, base: string | null, why = "no site to check", maxSteps = 12): Promise<Gate> {
+export async function signupGate(browser: Browser | null, base: string | null, why = "no site to check", maxSteps = 12, start = "/signup/"): Promise<Gate> {
   const id = "signup-flow";
   if (!base || !browser) return gate(id, "fail", `cannot run: ${why}`);
   const origin = new URL(base).origin;
   const context = await browser.newContext();
   const page = await context.newPage();
   const sent: string[] = [];
+  const ignored: string[] = [];
   const pageErrors: string[] = [];
   page.on("request", (r) => {
-    if (!["GET", "HEAD"].includes(r.method())) sent.push(`${r.method()} ${r.url()}`);
+    if (["GET", "HEAD"].includes(r.method())) return;
+    if (isCloudflareRum(r.method(), r.url(), origin)) ignored.push(`${r.method()} ${r.url()}`);
+    else sent.push(`${r.method()} ${r.url()}`);
   });
   page.on("pageerror", (e) => pageErrors.push(e.message));
   const steps: string[] = [];
   const fail = async (summary: string) => {
     await context.close().catch(() => undefined);
-    return gate(id, "fail", summary, { steps: steps.length }, { steps, sent, page_errors: pageErrors });
+    return gate(id, "fail", summary, { steps: steps.length }, { start, steps, sent, ignored, page_errors: pageErrors });
   };
   try {
-    await page.goto(new URL("signup/", base).toString(), { waitUntil: "load", timeout: 30_000 });
+    await page.goto(new URL(start.replace(/^\//, ""), base).toString(), { waitUntil: "load", timeout: 30_000 });
     for (let step = 0; step <= maxSteps; step++) {
       if (new URL(page.url()).origin !== origin) return await fail(`signup left the site for ${new URL(page.url()).origin}`);
       const final = page.locator("[data-signup-final]:visible").first();
@@ -117,7 +131,8 @@ export async function signupGate(browser: Browser | null, base: string | null, w
         if (stored.length) return await fail(`signup stores data: ${stored.join(", ")}`);
         if (sent.length) return await fail(`signup sends data: ${sent[0]}${sent.length > 1 ? ` (+${sent.length - 1})` : ""}`);
         await context.close();
-        return gate(id, "pass", `reached the final preview screen in ${steps.length} step${steps.length === 1 ? "" : "s"}; nothing stored or sent`, { steps: steps.length }, { steps });
+        const note = ignored.length ? ` (ignored ${ignored.length} Cloudflare Web Analytics beacon${ignored.length === 1 ? "" : "s"})` : "";
+        return gate(id, "pass", `reached the final preview screen in ${steps.length} step${steps.length === 1 ? "" : "s"} from ${start}; nothing stored or sent${note}`, { steps: steps.length }, ignored.length ? { start, steps, ignored } : { start, steps });
       }
       if (step === maxSteps) return await fail(`no final screen ([data-signup-final]) after ${maxSteps} steps`);
       // Fill every visible, enabled, empty field.

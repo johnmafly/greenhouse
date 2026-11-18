@@ -1,0 +1,6 @@
+# Fixture: contract v1 manifest without a content map (capture falls back to the v1 routes).
+slug: capture-fixture
+build:
+  command: npm run build
+  output: dist
+production_branch: main

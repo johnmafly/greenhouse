@@ -15,8 +15,12 @@ import {
   verifyBundle,
   insideGitCheckout,
 } from "../src/capture-manifest.ts";
-import { parseR2Target, uploadBundle } from "../src/capture-r2.ts";
+import { contentType, parseR2Target, uploadBundle } from "../src/capture-r2.ts";
 import { CONTRACT_ROUTES, capture, parseRoutes, routeName } from "../src/capture.ts";
+import { CONTENT_KEYS, loadContentMap, parseContentMap, routesFromContentMap, stripAnchor, type ContentMap } from "../src/capture-routes.ts";
+import { motionTargets, pageSlug, stripPositions, type MotionEntry } from "../src/capture-motion.ts";
+
+const FIXTURES = join(import.meta.dirname, "fixtures", "capture-content-map");
 
 async function bundleDir(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "gh-bundle-"));
@@ -95,6 +99,90 @@ describe("routes", () => {
   });
 });
 
+describe("content map routes (contract v2)", () => {
+  const map: ContentMap = {
+    how_it_works: "/how-it-works/",
+    getting_started: "/docs/start/",
+    architecture: "/docs/architecture/",
+    integration: "/docs/start/#integrate",
+    comparison: "/vs/",
+    pricing: "/#plans",
+    signup: "/try/",
+  };
+
+  test("'/' first, then distinct paths in content-key order, anchors stripped", () => {
+    const { routes } = routesFromContentMap(map);
+    assert.deepEqual(routes, ["/", "/how-it-works/", "/docs/start/", "/docs/architecture/", "/vs/", "/try/"]);
+    // Order follows the keys, not the YAML: a map listing signup first still puts it last.
+    const { signup, ...rest } = map;
+    const reordered: ContentMap = { signup, ...rest };
+    assert.equal(Object.keys(reordered)[0], "signup");
+    assert.deepEqual(routesFromContentMap(reordered).routes, routes);
+  });
+
+  test("each page records the content keys it serves, anchors kept", () => {
+    const { serves } = routesFromContentMap(map);
+    assert.deepEqual(serves.get("/"), [{ key: "pricing", target: "/#plans" }]);
+    assert.deepEqual(serves.get("/docs/start/"), [
+      { key: "getting_started", target: "/docs/start/" },
+      { key: "integration", target: "/docs/start/#integrate" },
+    ]);
+    assert.deepEqual(serves.get("/try/"), [{ key: "signup", target: "/try/" }]);
+    const all = [...serves.values()].flat().map((s) => s.key).sort();
+    assert.deepEqual(all, [...CONTENT_KEYS].sort());
+  });
+
+  test("everything on one page collapses to '/'", () => {
+    const one = Object.fromEntries(CONTENT_KEYS.map((k) => [k, `/#${k}`])) as ContentMap;
+    const r = routesFromContentMap(one);
+    assert.deepEqual(r.routes, ["/"]);
+    assert.equal(r.serves.get("/")!.length, 7);
+    assert.equal(stripAnchor("/a/?x=1#b"), "/a/?x=1");
+  });
+
+  test("no content map means fallback (null), a malformed one is an error", () => {
+    assert.equal(parseContentMap({ slug: "x" }), null);
+    assert.equal(parseContentMap(null), null);
+    assert.deepEqual(parseContentMap({ content: map }), map);
+    assert.throws(() => parseContentMap({ content: null }), /content must be a mapping/);
+    assert.throws(() => parseContentMap({ content: ["/"] }), /content must be a mapping/);
+    assert.throws(() => parseContentMap(["x"]), /top level must be a mapping/);
+    const { signup: _s, ...missing } = map;
+    assert.throws(() => parseContentMap({ content: missing }), /content\.signup is missing/);
+    assert.throws(() => parseContentMap({ content: { ...map, pricing: "pricing/" } }), /content\.pricing must be a site path/);
+    assert.throws(() => parseContentMap({ content: { ...map, pricing: "//evil.test/" } }), /content\.pricing must be a site path/);
+    assert.throws(() => parseContentMap({ content: { ...map, pricing: 3 } }), /content\.pricing must be a string/);
+    assert.throws(() => parseContentMap({ content: { ...map, pricng: "/p/" } }), /unknown key content\.pricng/);
+  });
+
+  test("loads greenhouse.yaml from a file or a checkout directory", async () => {
+    const byDir = await loadContentMap(FIXTURES);
+    assert.equal(byDir.file, join(FIXTURES, "greenhouse.yaml"));
+    assert.deepEqual(byDir.map, map);
+    assert.equal((await loadContentMap(join(FIXTURES, "no-content.yaml"))).map, null);
+    await assert.rejects(loadContentMap(join(FIXTURES, "malformed.yaml")), /malformed content map: unknown key content\.pricng; content\.getting_started must be a site path .*content\.signup is missing/);
+    await assert.rejects(loadContentMap(join(FIXTURES, "nope.yaml")), /no such file/);
+  });
+});
+
+describe("motion evidence helpers", () => {
+  test("targets are home and the signup start, deduplicated", () => {
+    assert.deepEqual(motionTargets("/signup/"), [{ page: "/", roles: ["home"] }, { page: "/signup/", roles: ["signup"] }]);
+    assert.deepEqual(motionTargets("/#signup"), [{ page: "/", roles: ["home", "signup"] }]);
+    assert.equal(pageSlug("/docs/try/"), "docs-try");
+    assert.equal(pageSlug("/"), "home");
+  });
+  test("strip positions are evenly spaced, top and bottom included", () => {
+    assert.deepEqual(stripPositions(1100, 12), [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100]);
+    assert.deepEqual(stripPositions(0, 3), [0, 0, 0]);
+    assert.equal(stripPositions(5000, 12).length, 12);
+  });
+  test("R2 content types cover the new files", () => {
+    assert.equal(contentType("motion/home-desktop-scroll.webm"), "video/webm");
+    assert.equal(contentType("motion/home-desktop-strip.png"), "image/png");
+  });
+});
+
 describe("R2 upload", () => {
   test("parses <bucket>/<prefix>", () => {
     assert.deepEqual(parseR2Target("greenhouse-evidence/rounds/demo/01"), { bucket: "greenhouse-evidence", prefix: "rounds/demo/01" });
@@ -146,6 +234,16 @@ describe("capture CLI arguments", () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /outside every git checkout/);
   });
+  test("a malformed content map, or one combined with --routes, is a usage error", () => {
+    const out = join(tmpdir(), "gh-never-written");
+    const bad = spawnSync(process.execPath, ["cli/src/main.ts", "capture", "--url", "http://x.test/", "--out", out, "--greenhouse-yaml", join(FIXTURES, "malformed.yaml")], { encoding: "utf8" });
+    assert.equal(bad.status, 2);
+    assert.match(bad.stderr, /malformed content map/);
+    const both = spawnSync(process.execPath, ["cli/src/main.ts", "capture", "--url", "http://x.test/", "--out", out, "--greenhouse-yaml", FIXTURES, "--routes", "/"], { encoding: "utf8" });
+    assert.equal(both.status, 2);
+    assert.match(both.stderr, /mutually exclusive/);
+    assert.equal(existsSync(out), false);
+  });
   test("--r2 without a token is a usage error", () => {
     const env = { ...process.env };
     delete env.CLOUDFLARE_API_TOKEN;
@@ -173,6 +271,14 @@ const PAGE = (title: string, body: string) =>
   `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
 <style>.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)} .tall{height:2400px}</style></head>
 <body><h1>${title}</h1>${body}</body></html>`;
+
+// Short motion timing so the browser tests stay quick (production: ~13.5 s videos, 600 ms settle).
+const FAST_MOTION = { holdTopMs: 200, scrollMs: 1500, holdBottomMs: 200, stepMs: 50, settleMs: 40 };
+
+function pngSize(buf: Buffer): { width: number; height: number } {
+  assert.equal(buf.subarray(1, 4).toString("latin1"), "PNG");
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
 
 test("capture writes a valid bundle for every route [browser]", { skip: browserSkip }, async () => {
   const server = createServer((req, res) => {
@@ -204,15 +310,58 @@ test("capture writes a valid bundle for every route [browser]", { skip: browserS
   const root = await mkdtemp(join(tmpdir(), "gh-capture-"));
   const out = join(root, "bundle");
   try {
-    const m = await capture({ url: `http://127.0.0.1:${port}/`, out, routes: ["/", "/docs/", "/missing/"], log: () => {} });
+    const m = await capture({ url: `http://127.0.0.1:${port}/`, out, routes: ["/", "/docs/", "/missing/"], motion: FAST_MOTION, log: () => {} });
     assert.match(m.bundle_hash!, /^[0-9a-f]{64}$/);
     assert.deepEqual((m.deployment as { slug: string }).slug, "fixture");
     const pages = m.pages as { route: string; status: number; files: { desktop: string; mobile: string; text: string } }[];
     assert.deepEqual(pages.map((p) => [p.route, p.status]), [["/", 200], ["/docs/", 200], ["/missing/", 404]]);
-    // 3 routes x (desktop, mobile, text) + well-known
-    assert.equal(m.files.length, 10);
+    // 3 routes x (desktop, mobile, text) + well-known + 9 motion files
+    assert.equal(m.files.length, 19);
     const v = await verifyBundle(out);
     assert.deepEqual(v.errors, []);
+    assert.equal(m.schema_version, 2);
+    assert.equal(m.route_source, "routes_option");
+    assert.equal((m.pages as { content: unknown }[])[0].content, null);
+
+    // Motion: home and /signup/ (fallback signup start), desktop and phone, plus one reduced-motion strip.
+    const motion = m.motion as MotionEntry[];
+    const summary = motion.map((e) => `${e.kind} ${e.page} ${e.viewport}`).sort();
+    assert.deepEqual(summary, [
+      "frame_strip / desktop",
+      "frame_strip / mobile",
+      "frame_strip /signup/ desktop",
+      "frame_strip /signup/ mobile",
+      "frame_strip_reduced_motion / desktop",
+      "scroll_video / desktop",
+      "scroll_video / mobile",
+      "scroll_video /signup/ desktop",
+      "scroll_video /signup/ mobile",
+    ]);
+    const hashes = new Map(m.files.map((f) => [f.path, f]));
+    for (const e of motion) {
+      const f = hashes.get(e.path);
+      assert.ok(f, `${e.path} is in manifest files[]`);
+      assert.match(f.sha256, /^[0-9a-f]{64}$/);
+      assert.ok(f.bytes > 1000, `${e.path} is not empty`);
+      assert.equal(e.status, 200);
+      assert.ok(e.duration_ms > 0);
+      if (e.kind === "scroll_video") {
+        assert.equal((await readFile(join(out, e.path))).readUInt32BE(0), 0x1a45dfa3, "webm (EBML) header");
+        assert.equal(e.frames, null);
+        assert.ok(e.duration_ms >= 1900, "video covers hold + scroll + hold");
+      } else {
+        assert.equal(e.frames, 12);
+        assert.equal(e.scroll_positions![0], 0);
+        assert.ok(e.scroll_positions![11] > 1000, "the fixture page scrolls");
+        assert.equal(e.scroll_positions![11], e.page_height - e.viewport_size.height, "last frame is at the bottom");
+        assert.deepEqual([...e.scroll_positions!].sort((a, b) => a - b), e.scroll_positions);
+        const size = pngSize(await readFile(join(out, e.path)));
+        assert.equal(size.width, e.layout!.columns * e.layout!.frame_size.width + (e.layout!.columns + 1) * 10);
+        assert.ok(size.height > e.layout!.rows * e.layout!.frame_size.height);
+      }
+    }
+    const reduced = motion.find((e) => e.kind === "frame_strip_reduced_motion")!;
+    assert.deepEqual([reduced.page, reduced.viewport, reduced.reduced_motion], ["/", "desktop", true]);
 
     // PNG dimensions: desktop 1440 wide full page, mobile 390 CSS px at 2x
     const png = await readFile(join(out, pages[0].files.desktop));
@@ -228,8 +377,44 @@ test("capture writes a valid bundle for every route [browser]", { skip: browserS
     assert.doesNotMatch(text, /HIDDEN-/);
     assert.ok((m.pages as { hidden_text_chars: number }[])[0].hidden_text_chars > 0);
 
+    // Tampering with a motion file fails verification.
+    await writeFile(join(out, reduced.path), "x");
+    assert.ok((await verifyBundle(out)).errors.includes(`sha256 mismatch: ${reduced.path}`));
+
     // The CLI refuses to overwrite an existing bundle.
-    await assert.rejects(capture({ url: `http://127.0.0.1:${port}/`, out, routes: ["/"], log: () => {} }), /not empty/);
+    await assert.rejects(capture({ url: `http://127.0.0.1:${port}/`, out, routes: ["/"], motion: false, log: () => {} }), /not empty/);
+  } finally {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("capture follows the content map and records what each page serves [browser]", { skip: browserSkip }, async () => {
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(req.url ?? "");
+    res.setHeader("content-type", "text/html");
+    res.end(PAGE(`Page ${req.url}`, `<p id="plans">Plans</p><div class="tall"></div>`));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  const root = await mkdtemp(join(tmpdir(), "gh-capture-map-"));
+  const out = join(root, "bundle");
+  try {
+    const { map } = await loadContentMap(FIXTURES);
+    const m = await capture({ url: `http://127.0.0.1:${port}/`, out, contentMap: map, motion: { ...FAST_MOTION, scrollMs: 500, frames: 4 }, log: () => {} });
+    assert.equal(m.route_source, "content_map");
+    assert.deepEqual(m.content_map, map);
+    const pages = m.pages as { route: string; content: { key: string; target: string }[] }[];
+    assert.deepEqual(pages.map((p) => p.route), ["/", "/how-it-works/", "/docs/start/", "/docs/architecture/", "/vs/", "/try/"]);
+    assert.deepEqual(pages[0].content, [{ key: "pricing", target: "/#plans" }]);
+    assert.deepEqual(pages[2].content.map((c) => c.target), ["/docs/start/", "/docs/start/#integrate"]);
+    // Motion uses content.signup as the signup start.
+    const motion = m.motion as MotionEntry[];
+    assert.deepEqual([...new Set(motion.map((e) => e.page))], ["/", "/try/"]);
+    assert.ok(motion.every((e) => e.kind === "scroll_video" || e.frames === 4));
+    assert.ok(!seen.some((u) => u.startsWith("/signup")), "no v1 routes visited");
+    assert.deepEqual((await verifyBundle(out)).errors, []);
   } finally {
     server.close();
     await rm(root, { recursive: true, force: true });

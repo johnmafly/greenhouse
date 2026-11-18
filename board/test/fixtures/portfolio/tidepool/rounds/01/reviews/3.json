@@ -6,21 +6,22 @@
     "family": "xai",
     "brief_version": "brief-v1"
   },
-  "rubric_version": 1,
+  "rubric_version": 2,
   "bundle_hash": "798ad3c477c4c9b1818ef20063272fde7c50f459d0b320574da02809367c67ce",
   "scores": {
+    "design_identity": 7,
+    "motion_interaction": 7,
+    "copy_voice": 8,
+    "distinctness": 6,
     "conviction": 8,
     "docs_buildability": 7,
-    "site_craft": 7,
-    "distinctness": 6,
-    "comparison_honesty": 7,
-    "pricing_oss": 7,
-    "evidence_truth": 8,
-    "signup_value": 7
+    "evidence_truth": 7.5,
+    "business_signup": 7
   },
   "findings": [],
   "flags": {
     "invented_social_proof": false,
-    "reviewer_instruction": false
+    "reviewer_instruction": false,
+    "template_structure": false
   }
 }

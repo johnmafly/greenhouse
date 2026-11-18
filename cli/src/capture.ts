@@ -13,8 +13,13 @@ import {
   type Manifest,
 } from "./capture-manifest.ts";
 import { parseR2Target, uploadBundle } from "./capture-r2.ts";
+import { loadContentMap, routesFromContentMap, stripAnchor, type ContentMap, type ContentServe } from "./capture-routes.ts";
+import { DEFAULT_MOTION_TIMING, captureMotion, motionTargets, type MotionEntry, type MotionTiming } from "./capture-motion.ts";
 
-/** Routes every project must serve (docs/package-contract.md). */
+/**
+ * Contract v1 routes. Used when the project declares no content map (greenhouse.yaml
+ * `content:`, contract v2); with one, capture visits "/" plus the map's paths.
+ */
 export const CONTRACT_ROUTES = [
   "/",
   "/docs/",
@@ -33,20 +38,29 @@ export const VIEWPORTS = {
 } as const;
 
 const WELL_KNOWN = "/.well-known/greenhouse.json";
-const MANIFEST_SCHEMA_VERSION = 1;
+// 2: pages[].content, route_source, content_map, motion[] (design bar v2).
+const MANIFEST_SCHEMA_VERSION = 2;
 
 const USAGE = `greenhouse capture --url <deployment> --out <bundle dir> [options]
 greenhouse capture --verify <bundle dir>
 
-Freeze an evidence bundle: full-page screenshots of every contract route at desktop
-(1440x900) and mobile (390x844), the visible text of each page, and manifest.json with
-the sha256 of every file and a bundle hash.
+Freeze an evidence bundle: full-page screenshots of every route at desktop (1440x900)
+and mobile (390x844), the visible text of each page, motion evidence for the home page
+and the signup start (scroll video webm and 12-frame strip PNG at desktop and phone, plus
+a reduced-motion strip of the home page), and manifest.json with the sha256 of every file
+and a bundle hash.
 
 Options:
   --url <url>            Deployment base URL (required)
   --out <dir>            New bundle directory; must not exist (or be empty) and must be
                          outside every git checkout (decision 0002)
-  --routes <a,b,...>     Routes to capture (default: the package contract's routes)
+  --greenhouse-yaml <f>  The project's greenhouse.yaml (or its checkout directory). Routes
+                         become "/" plus the distinct paths of its content map (contract v2,
+                         anchors dropped), and each page records the content keys it serves;
+                         motion uses content.signup as the signup start. Without this option,
+                         or when the file has no content: map, the contract v1 routes are
+                         captured and /signup/ is the signup start. A malformed map is an error.
+  --routes <a,b,...>     Routes to capture instead (not with --greenhouse-yaml)
   --r2 <bucket>/<prefix> Also upload to R2 with content-addressed keys <prefix>/sha256/<hash>.
                          Needs CLOUDFLARE_API_TOKEN (and CLOUDFLARE_ACCOUNT_ID if the token
                          sees more than one account) in the environment.
@@ -160,6 +174,8 @@ type PageRecord = {
   status: number | null;
   title: string;
   files: { desktop: string; mobile: string; text: string };
+  /** Content keys this page serves (target keeps the #anchor); null without a content map. */
+  content: ContentServe[] | null;
   hidden_text_chars: number;
   /** CSS width the page laid out at on the phone; above 390 means it lacks a mobile viewport. */
   mobile_layout_width: number | null;
@@ -191,6 +207,10 @@ export type CaptureOptions = {
   url: string;
   out: string;
   routes?: string[];
+  /** greenhouse.yaml content map (contract v2); routes and the signup start come from it. */
+  contentMap?: ContentMap | null;
+  /** Motion evidence timing overrides, or false to skip motion (tests only). */
+  motion?: false | Partial<MotionTiming>;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
   log?: (msg: string) => void;
@@ -202,7 +222,11 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
   const log = opts.log ?? ((m: string) => process.stderr.write(`${m}\n`));
   const base = new URL(opts.url);
   if (base.protocol !== "https:" && base.protocol !== "http:") throw new Error("--url must be http(s)");
-  const routes = opts.routes ?? CONTRACT_ROUTES;
+  if (opts.contentMap && opts.routes) throw new Error("routes and a content map are mutually exclusive");
+  const fromMap = opts.contentMap ? routesFromContentMap(opts.contentMap) : null;
+  const routes = fromMap?.routes ?? opts.routes ?? CONTRACT_ROUTES;
+  const routeSource = fromMap ? "content_map" : opts.routes ? "routes_option" : "contract_v1_fallback";
+  const signupStart = opts.contentMap ? stripAnchor(opts.contentMap.signup) || "/" : "/signup/";
   const out = resolve(opts.out);
   await assertUsableOut(out);
   const tmp = `${out}.partial-${process.pid}`;
@@ -239,7 +263,7 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
       const dir = join(tmp, "pages", name);
       await mkdir(dir, { recursive: true });
       const url = new URL(route, base).toString();
-      const rec: PageRecord = { route, url, final_url: url, status: null, title: "", files: { desktop: `pages/${name}/desktop.png`, mobile: `pages/${name}/mobile.png`, text: `pages/${name}/text.txt` }, hidden_text_chars: 0, mobile_layout_width: null };
+      const rec: PageRecord = { route, url, final_url: url, status: null, title: "", files: { desktop: `pages/${name}/desktop.png`, mobile: `pages/${name}/mobile.png`, text: `pages/${name}/text.txt` }, content: fromMap ? (fromMap.serves.get(route) ?? []) : null, hidden_text_chars: 0, mobile_layout_width: null };
       for (const vp of ["desktop", "mobile"] as const) {
         const page = await contexts[vp].newPage();
         try {
@@ -266,6 +290,12 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
       pages.push(rec);
     }
 
+    let motion: MotionEntry[] = [];
+    const timing = opts.motion === false ? null : { ...DEFAULT_MOTION_TIMING, ...opts.motion };
+    if (timing) {
+      motion = await captureMotion({ browser, base, tmp, targets: motionTargets(signupStart), viewports: VIEWPORTS, headers, timing, timeoutMs: opts.timeoutMs ?? 45_000, log });
+    }
+
     const manifest = await buildManifest(tmp, {
       schema_version: MANIFEST_SCHEMA_VERSION,
       kind: "greenhouse-evidence-bundle",
@@ -276,7 +306,11 @@ export async function capture(opts: CaptureOptions): Promise<Manifest> {
       viewports: VIEWPORTS,
       text_source: "desktop render, visible text only",
       deployment,
+      route_source: routeSource,
+      content_map: opts.contentMap ?? null,
       pages,
+      motion_timing: timing,
+      motion,
     });
     await writeFile(join(tmp, MANIFEST_FILE), serializeManifest(manifest));
     await rm(out, { recursive: true, force: true }); // only an empty dir can exist here (assertUsableOut)
@@ -311,6 +345,7 @@ export async function main(argv: string[]): Promise<number> {
         url: { type: "string" },
         out: { type: "string" },
         routes: { type: "string" },
+        "greenhouse-yaml": { type: "string" },
         r2: { type: "string" },
         timeout: { type: "string" },
         verify: { type: "string" },
@@ -338,9 +373,16 @@ export async function main(argv: string[]): Promise<number> {
   if (!isAbsolute(args.out)) process.stderr.write(`note: --out resolved to ${resolve(args.out)}\n`);
   let target;
   let routes;
+  let contentMap: ContentMap | null = null;
   try {
     target = args.r2 ? parseR2Target(args.r2) : null;
-    routes = parseRoutes(args.routes);
+    if (args["greenhouse-yaml"] && args.routes) throw new Error("--routes and --greenhouse-yaml are mutually exclusive");
+    if (args["greenhouse-yaml"]) {
+      const loaded = await loadContentMap(resolve(args["greenhouse-yaml"]));
+      contentMap = loaded.map;
+      if (!contentMap) process.stderr.write(`note: ${loaded.file} has no content: map; capturing the contract v1 routes\n`);
+    }
+    routes = contentMap || !args.routes ? undefined : parseRoutes(args.routes);
     if (target && !process.env.CLOUDFLARE_API_TOKEN) throw new Error("--r2 needs CLOUDFLARE_API_TOKEN in the environment");
   } catch (e) {
     process.stderr.write(`greenhouse capture: ${(e as Error).message}\n`);
@@ -348,7 +390,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   try {
     const out = resolve(args.out);
-    const manifest = await capture({ url: args.url, out, routes, timeoutMs: args.timeout ? Number(args.timeout) : undefined });
+    const manifest = await capture({ url: args.url, out, routes, contentMap, timeoutMs: args.timeout ? Number(args.timeout) : undefined });
     const summary: Record<string, unknown> = { out, bundle_hash: manifest.bundle_hash, files: manifest.files.length };
     if (target) {
       const up = await uploadBundle(out, manifest, target);

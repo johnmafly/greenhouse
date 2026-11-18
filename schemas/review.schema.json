@@ -47,10 +47,14 @@
     "flags": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["invented_social_proof", "reviewer_instruction"],
+      "required": ["invented_social_proof", "reviewer_instruction", "template_structure"],
       "properties": {
         "invented_social_proof": { "type": "boolean" },
-        "reviewer_instruction": { "type": "boolean" }
+        "reviewer_instruction": { "type": "boolean" },
+        "template_structure": {
+          "description": "Rubric v2 sameness: the structure or look is template output (a stock hero + feature grid + pricing table, the owner's example sections used as the fixed skeleton, or near-identical to the template or a portfolio sibling). A panel majority caps the composite at the sameness cap.",
+          "type": "boolean"
+        }
       }
     }
   }

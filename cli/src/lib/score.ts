@@ -20,7 +20,17 @@ export const CAP_GATES: Record<string, { cap: "quality" | "integrity"; reason: s
   // Decision 0003: a canary hit caps the composite at 5.0 and is a suspected breach reported to
   // the owner (the integrity cap carries report_to_owner in the rubric).
   "canary": { cap: "integrity", reason: "canary_leak" },
+  // Decision 0004: motion must respect prefers-reduced-motion.
+  "reduced-motion": { cap: "quality", reason: "motion_ignores_reduced_motion" },
 };
+
+/**
+ * Rubric v2 sameness cap: applies when a strict majority of the panel sets the review flag
+ * template_structure (2 of 3, 3 of 4, 3 of 5).
+ */
+export function panelMajority(flagged: number, panel: number): boolean {
+  return panel > 0 && flagged * 2 > panel;
+}
 
 export interface ReviewInput {
   /** File name under reviews/, e.g. "1.json". Keys inputs.reviews_sha256. */
@@ -138,6 +148,8 @@ export function computeScore(inp: ScoreInputs): Score {
   const integrity = capMax(rubric, "integrity");
   if (reviews.some((r) => r.review.flags.invented_social_proof)) caps.set("invented_social_proof", integrity);
   if (reviews.some((r) => r.review.flags.reviewer_instruction)) caps.set("reviewer_instruction", integrity);
+  const sameFlags = reviews.filter((r) => r.review.flags.template_structure).length;
+  if (panelMajority(sameFlags, reviews.length)) caps.set("template_sameness", capMax(rubric, "sameness"));
   const caps_applied = [...caps]
     .map(([reason, max]) => ({ reason, max }))
     .sort((a, b) => a.max - b.max || byString(a.reason, b.reason));
@@ -150,6 +162,7 @@ export function computeScore(inp: ScoreInputs): Score {
     gates_green &&
     composite >= g.composite_min &&
     Object.values(dimension_medians).every((m) => m >= g.dimension_median_min) &&
+    (g.focus_dimensions ?? []).every((d) => dimension_medians[d] >= (g.focus_median_min ?? g.dimension_median_min)) &&
     Object.values(reviewer_composites).every((c) => c >= g.reviewer_composite_min);
 
   const reviews_sha256: Record<string, string> = {};
