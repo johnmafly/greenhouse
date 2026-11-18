@@ -113,10 +113,10 @@ these deterministic gates and writes `checks.json` (`schemas/checks.schema.json`
 | `canary` | No canary string from `--canary-file` anywhere (`skip` without the flag). A failure carries the integrity cap (5.0, decision 0003). |
 | `axe` | axe-core on every page: no critical violations (serious: `warn`). |
 | `signup-flow` | The mock signup reaches its final preview screen, storing and sending nothing. |
-| `lighthouse` | Performance and accessibility on `/` and every `content:` path (v2 target: mobile performance ≥ 90, CLS ≤ 0.1, TBT ≤ 200 ms), median of 5 runs under `~/.greenhouse/perf.lock`: 90+ pass, 85-89 warn, under 85 fail. |
+| `lighthouse` | Mobile form factor on `/` and every `content:` path, median of 5 runs per route under `~/.greenhouse/perf.lock`. Fails if any route's median performance is below 90, CLS above 0.1 or TBT above 200 ms. Accessibility: 90+ pass, 85-89 `warn`, under 85 fail. |
 | `reduced-motion` | With `prefers-reduced-motion: reduce` emulated, scrolling `/` runs no transform or opacity animation longer than 200 ms and no scroll-linked animation, and all content is visible. A failure is the quality cap `motion_ignores_reduced_motion` (7.0). |
 | `no-js-content` | With JavaScript disabled, every required content section renders visible text (nothing stuck at opacity 0). |
-| `template-likeness` | Reports nav labels, the heading outline and a similarity score against `template/` and portfolio siblings, as panel evidence. Fails only on near-identity to `template/` (≥ 0.8). |
+| `template-likeness` | Reports nav labels, the heading outline and a similarity score against `template/` and portfolio siblings, as panel evidence. Fails only on near-identity to `template/` (≥ 0.8). Run on `template/` itself it fails by design (similarity 1.0): the template is an unstyled example, not an all-green target. |
 
 Without `--url` the clean build is served locally the way Pages serves it (`_headers` included).
 Tool versions (Node, Playwright and its Chromium, axe-core, Lighthouse) are pinned in
