@@ -9,7 +9,7 @@ export const CHECK_USAGE = `greenhouse check --repo <path> [--url <deployment>] 
                  [--out <file>] [--sha <sha>] [--round <n>] [--lighthouse-runs <n>]
 
 Runs every deterministic gate against a project package and writes checks.json:
-  build, package-files, deployed-sha, routes, links, page-structure, placeholder, noindex,
+  build, package-files, claim-links, deployed-sha, routes, links, page-structure, placeholder, noindex,
   spec-samples, secrets, canary, axe, signup-flow, lighthouse.
 
 The repo is built from a clean checkout of the commit (default: HEAD, or the sha in

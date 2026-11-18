@@ -17,6 +17,9 @@ export const CAP_GATES: Record<string, { cap: "quality" | "integrity"; reason: s
   "intake-drift": { cap: "quality", reason: "intake_drift" },
   "social-proof": { cap: "integrity", reason: "invented_social_proof" },
   "reviewer-instruction": { cap: "integrity", reason: "reviewer_instruction" },
+  // Decision 0003: a canary hit caps the composite at 5.0 and is a suspected breach reported to
+  // the owner (the integrity cap carries report_to_owner in the rubric).
+  "canary": { cap: "integrity", reason: "canary_leak" },
 };
 
 export interface ReviewInput {

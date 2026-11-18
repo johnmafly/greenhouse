@@ -56,9 +56,11 @@ node cli/src/main.ts score --round-dir portfolio/<slug>/rounds/01 --check  # aud
   - 7.0 (`quality`): any failed gate, reason `failed_gate:<id>`, except these named gates:
     `claims` → `unsupported_claim`, `critical-assumptions` → `untested_critical_assumption`,
     `intake-drift` → `intake_drift`.
-  - 5.0 (`integrity`): a failed `social-proof` or `reviewer-instruction` gate, or any one
-    reviewer setting `flags.invented_social_proof` / `flags.reviewer_instruction`
-    (reasons `invented_social_proof`, `reviewer_instruction`).
+  - 5.0 (`integrity`): a failed `social-proof`, `reviewer-instruction` or `canary` gate, or any
+    one reviewer setting `flags.invented_social_proof` / `flags.reviewer_instruction`
+    (reasons `invented_social_proof`, `reviewer_instruction`, `canary_leak`). A `canary_leak` is
+    a suspected breach: the integrity cap has `report_to_owner: true`, and the judge's ruling
+    reports it to the owner (score.json records only the reason).
 - **gates_green**: `all_green` and no failed gate (`warn` and `skip` do not fail).
 - **graduation_eligible**: not provisional, gates green, composite ≥ 9.0, every dimension
   median ≥ 8.0, every reviewer composite ≥ 8.5.

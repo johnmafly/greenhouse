@@ -383,9 +383,11 @@ test("lighthouse: median of runs, >= 90 pass, 85-89 warn, under 85 fail, errors 
 
 // --- whole check, no browser ------------------------------------------------------------------
 
-test("gate ids that carry a named cap in score.ts are not reused by deterministic gates", () => {
-  const ids = ["build", "package-files", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets", "canary", "axe", "signup-flow", "lighthouse"];
+test("gate ids that carry a named cap in score.ts are not reused by deterministic gates, except canary (decision 0003)", () => {
+  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets", "axe", "signup-flow", "lighthouse"];
   for (const id of ids) assert.ok(!(id in CAP_GATES), id);
+  // A failed canary gate is meant to carry the integrity cap (5.0), reason canary_leak.
+  assert.deepEqual(CAP_GATES["canary"], { cap: "integrity", reason: "canary_leak" });
 });
 
 test("runCheck without a browser: browser gates fail with the reason (never pass), checks.json is valid", async () => {
@@ -399,7 +401,7 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
     assert.equal(checks.slug, "example-seed");
     assert.equal(checks.all_green, false);
     const by = Object.fromEntries(checks.gates.map((g) => [g.id, g]));
-    for (const id of ["build", "package-files", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets"])
+    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "secrets"])
       assert.equal(by[id].status, "pass", `${id}: ${by[id].summary}`);
     assert.equal(by.canary.status, "skip");
     for (const id of ["axe", "signup-flow", "lighthouse"]) {
@@ -417,7 +419,7 @@ test("runCheck: a failed build with no --url fails every site gate with the reas
   const { dir } = templateRepo((d) => edit(join(d, "greenhouse.yaml"), (s) => s.replace("npm run build", "exit 1")));
   const checks = await runCheck({ repo: dir, lighthouseRuns: 1 });
   assert.equal(checks.all_green, false);
-  for (const g of checks.gates.filter((g) => !["package-files", "secrets", "canary"].includes(g.id))) {
+  for (const g of checks.gates.filter((g) => !["package-files", "claim-links", "secrets", "canary"].includes(g.id))) {
     assert.equal(g.status, "fail", g.id);
     if (g.id !== "build") assert.match(g.summary, /cannot run/, g.id);
   }

@@ -9,6 +9,8 @@ import { REPO_ROOT, assertValid, readDocument } from "../lib/schemas.ts";
 import type { Checks, Gate, Submission } from "../lib/schemas.ts";
 import { axeGate, browserAvailable, launchBrowser, signupGate } from "./browser.ts";
 import { cleanBuild, git, scanCorpus } from "./build.ts";
+import { claimLinksGate } from "./claim-links.ts";
+import type { ClaimLinkOptions } from "./claim-links.ts";
 import {
   canaryGate,
   deployedShaGate,
@@ -46,6 +48,8 @@ export interface CheckOptions {
   /** Test hook: replaces the real Lighthouse runner. */
   lighthouseRunner?: LhRunner;
   perfLockTimeoutMs?: number;
+  /** claim-links tuning (timeouts, 429 backoff); `now` defaults to the check start. */
+  claimLinks?: ClaimLinkOptions;
   /** Progress lines (default: none). */
   log?: (line: string) => void;
 }
@@ -149,6 +153,7 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     const build = await cleanBuild(repo, sha, work);
     push(build.gate);
     push(packageFilesGate(build.checkoutDir));
+    push(await claimLinksGate(build.checkoutDir, { now: new Date(started_at), ...opts.claimLinks }));
     const slug = build.manifest?.slug ?? submission?.slug ?? readManifest(repo).manifest?.slug ?? (basename(repo).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+/, "") || "unknown");
 
     let base: string | null = null;
