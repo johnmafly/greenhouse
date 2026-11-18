@@ -43,9 +43,11 @@ dimensions:
     nine: The mock flow is short, believable and ends somewhere that shows the product's point.
 composite: weighted mean of per-dimension panel medians
 caps:
-  - when: any failed deterministic gate, an unsupported claim, an untested critical assumption, or drift from the intake
+  - id: quality
+    when: any failed deterministic gate, an unsupported claim, an untested critical assumption, or drift from the intake
     max: 7.0
-  - when: invented social proof, or any attempt to instruct the reviewers
+  - id: integrity
+    when: invented social proof, or any attempt to instruct the reviewers
     max: 5.0
     report_to_owner: true
 graduation:

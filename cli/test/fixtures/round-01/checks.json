@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "slug": "sample",
+  "round": 1,
+  "sha": "3f2a9c1e5b7d4f6a8c0e2b4d6f8a0c2e4b6d8f0a",
+  "deployment_url": "https://sample.pages.dev",
+  "cli_version": "0.1.0",
+  "tool_versions": {
+    "node": "24.11.0"
+  },
+  "machine": "agenthatchminisg",
+  "started_at": "2026-11-18T10:00:00Z",
+  "finished_at": "2026-11-18T10:20:00Z",
+  "gates": [
+    {
+      "id": "build",
+      "class": "deterministic",
+      "status": "pass",
+      "summary": "Clean-checkout build succeeded"
+    },
+    {
+      "id": "lighthouse",
+      "class": "deterministic",
+      "status": "warn",
+      "summary": "Median performance 88",
+      "metrics": {
+        "performance": 88
+      }
+    },
+    {
+      "id": "claims",
+      "class": "assisted",
+      "status": "pass",
+      "summary": "All ledger claims supported"
+    }
+  ],
+  "all_green": true,
+  "bundle_hash": "9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c"
+}

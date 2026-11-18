@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/johnmafly/greenhouse/schemas/review.schema.json",
+  "title": "Greenhouse blind review",
+  "description": "portfolio/<slug>/rounds/NN/reviews/<n>.json, one per panel reviewer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reviewer", "rubric_version", "bundle_hash", "scores", "findings", "flags"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "model", "family", "brief_version"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$" },
+        "model": { "type": "string", "minLength": 1 },
+        "family": { "type": "string", "minLength": 1 },
+        "brief_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "rubric_version": { "type": "integer", "minimum": 1 },
+    "bundle_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "scores": {
+      "description": "One score per rubric dimension id. Which ids are required is checked against the rubric by greenhouse score.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 10 }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "dimension", "severity", "title", "detail", "evidence"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$" },
+          "dimension": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "severity": { "enum": ["must", "should", "could"] },
+          "title": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invented_social_proof", "reviewer_instruction"],
+      "properties": {
+        "invented_social_proof": { "type": "boolean" },
+        "reviewer_instruction": { "type": "boolean" }
+      }
+    }
+  }
+}

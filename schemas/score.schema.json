@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/johnmafly/greenhouse/schemas/score.schema.json",
+  "title": "Greenhouse round score",
+  "description": "portfolio/<slug>/rounds/NN/score.json, computed by greenhouse score. Deterministic: same inputs give byte-identical output.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "slug", "round", "sha", "rubric_version", "brief_version", "provisional", "panel",
+    "dimension_medians", "reviewer_composites", "composite_raw", "caps_applied", "composite",
+    "gates_green", "graduation_eligible", "inputs", "cost_usd", "decided_at"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+    "round": { "type": "integer", "minimum": 1 },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "rubric_version": { "type": "integer", "minimum": 1 },
+    "brief_version": { "type": "string", "minLength": 1 },
+    "provisional": { "type": "boolean" },
+    "panel": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "model", "family"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "model": { "type": "string", "minLength": 1 },
+          "family": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "dimension_medians": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 10 }
+    },
+    "reviewer_composites": {
+      "type": "object",
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 10 }
+    },
+    "composite_raw": { "type": "number", "minimum": 0, "maximum": 10 },
+    "caps_applied": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason", "max"],
+        "properties": {
+          "reason": { "type": "string", "minLength": 1 },
+          "max": { "type": "number", "minimum": 0, "maximum": 10 }
+        }
+      }
+    },
+    "composite": { "type": "number", "minimum": 0, "maximum": 10 },
+    "gates_green": { "type": "boolean" },
+    "graduation_eligible": { "type": "boolean" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checks_sha256", "reviews_sha256", "bundle_hash"],
+      "properties": {
+        "checks_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "reviews_sha256": {
+          "description": "sha256 of each review file, keyed by its file name under reviews/.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        },
+        "bundle_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "cost_usd": { "oneOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] },
+    "decided_at": { "type": "string", "format": "date-time" }
+  }
+}

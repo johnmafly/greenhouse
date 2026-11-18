@@ -1,0 +1,8 @@
+schema_version: 1
+slug: sample
+round: 1
+repo: johnmafly/sample
+sha: 3f2a9c1e5b7d4f6a8c0e2b4d6f8a0c2e4b6d8f0a
+deployment_url: https://sample.pages.dev
+claims_sha256: 5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d
+changelog: First submission of the sample fixture.

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "slug": "sample",
+  "round": 1,
+  "sha": "3f2a9c1e5b7d4f6a8c0e2b4d6f8a0c2e4b6d8f0a",
+  "rubric_version": 1,
+  "brief_version": "brief-v1",
+  "provisional": true,
+  "panel": [
+    {
+      "id": "r-gemini",
+      "model": "gemini-2.5-pro",
+      "family": "google"
+    },
+    {
+      "id": "r-grok",
+      "model": "grok-4",
+      "family": "xai"
+    },
+    {
+      "id": "r-openai",
+      "model": "gpt-5",
+      "family": "openai"
+    }
+  ],
+  "dimension_medians": {
+    "conviction": 9,
+    "docs_buildability": 9,
+    "site_craft": 9,
+    "distinctness": 9,
+    "comparison_honesty": 9,
+    "pricing_oss": 9,
+    "evidence_truth": 9,
+    "signup_value": 9
+  },
+  "reviewer_composites": {
+    "r-gemini": 9.225,
+    "r-grok": 9,
+    "r-openai": 8.95
+  },
+  "composite_raw": 9,
+  "caps_applied": [],
+  "composite": 9,
+  "gates_green": true,
+  "graduation_eligible": false,
+  "inputs": {
+    "checks_sha256": "62d45fe897f59bbf31bdd3f37366ad89c0157b4c110e8b3e10abc298c4496930",
+    "reviews_sha256": {
+      "1.json": "606bc00d614bf3205a185efe559ddaeb5d4ff633cd943db7ec561611aadc8d63",
+      "2.json": "8c6a8c91e8aff7c6d81a80956ccb7b1f7626af46ecd7ea575e7524d0faef9e6f",
+      "3.json": "7271e4c0ee11b6ed71ed0a7f271245bc280677c4de6444199d6264c91aafe2ba"
+    },
+    "bundle_hash": "9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c9e1c"
+  },
+  "cost_usd": null,
+  "decided_at": "2026-11-18T10:20:00Z"
+}

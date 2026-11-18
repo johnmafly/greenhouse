@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/johnmafly/greenhouse/schemas/checks.schema.json",
+  "title": "Greenhouse gate results",
+  "description": "portfolio/<slug>/rounds/NN/checks.json, written by greenhouse check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "slug", "round", "sha", "deployment_url", "cli_version", "tool_versions",
+    "machine", "started_at", "finished_at", "gates", "all_green"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+    "round": { "type": "integer", "minimum": 1 },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "deployment_url": { "type": "string", "format": "uri", "pattern": "^https?://" },
+    "cli_version": { "type": "string", "minLength": 1 },
+    "tool_versions": { "type": "object", "additionalProperties": { "type": "string" } },
+    "machine": { "type": "string", "minLength": 1 },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "class", "status", "summary"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
+          "class": { "enum": ["deterministic", "assisted"] },
+          "status": { "enum": ["pass", "warn", "fail", "skip"] },
+          "summary": { "type": "string" },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": { "anyOf": [{ "type": "number" }, { "type": "string" }, { "type": "boolean" }, { "type": "null" }] }
+          },
+          "details": {}
+        }
+      }
+    },
+    "all_green": { "type": "boolean" },
+    "bundle_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}
