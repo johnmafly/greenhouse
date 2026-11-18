@@ -12,7 +12,20 @@ jobs:
         with:
           node-version: 24
       - run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
-      # WebKit for the webkit-iphone tests (Chromium tests still skip here with SKIP(browser)).
-      - run: npx playwright install --with-deps webkit
       - run: npm test
       - run: npm run board:build
+  # The webkit-iphone gate tests in WebKit. Playwright's own image has WebKit and its system
+  # libraries for this exact Playwright version, so nothing is installed with apt (slow mirrors).
+  webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: mcr.microsoft.com/playwright:v1.65.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node --test --test-name-pattern=webkit cli/test/check-browser.test.ts
+        env:
+          HOME: /root
