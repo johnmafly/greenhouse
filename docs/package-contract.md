@@ -5,7 +5,7 @@ v2 ([decision 0004](decisions/0004-design-bar-v2.md)) requires **content**, not 
 Chief designs the site's information architecture and declares where each required piece lives.
 The template in `template/` is an unstyled, working example of the contract. Its routes are one
 possible layout, not a structure to copy. How the site is judged is in
-[design-bar.md](design-bar.md) and `rubric/rubric-v2.yaml`.
+[design-bar.md](design-bar.md) and `rubric/rubric-v3.yaml` ([decision 0008](decisions/0008-vision-first-and-playbook.md)).
 
 ## Repository
 
@@ -15,6 +15,7 @@ possible layout, not a structure to copy. How the site is judged is in
 | `STATE.md` | yes | Decisions, open findings, next steps, spend. Kept current by the Chief. |
 | `claims.yaml` | yes | Every public factual claim (schema: `schemas/claims.schema.json`). |
 | `spec/openapi.yaml` (or `spec/interface.md` for non-HTTP products) | yes | The build spec docs samples are checked against. |
+| `MOCK_FIGURES.md` | when the site shows sample figures | Every mock number the site shows, by page (decision 0008, below). |
 | `greenhouse.yaml` | yes | `slug`, `build.command`, `build.output`, `production_branch: main`, the `content:` map, the `cost_model:` and the `docs:` block below. |
 
 ## Fixed routes
@@ -50,7 +51,7 @@ content:            # each value: a site path, optionally with #anchor
 | `getting_started` | Getting started: the first steps an engineer takes. |
 | `architecture` | Architecture: components, data flow, trust boundaries. |
 | `integration` | Integration guide, with code samples tied to the spec. |
-| `comparison` | Comparison with three or more vendors: fair, sourced, dated, including where a vendor is the better choice. |
+| `comparison` | Comparison with three or more vendors, including where a vendor is the better choice. Facts about a vendor are sourced in `claims.yaml`; a benchmark grid may show full sample figures under the decision 0008 rules below. |
 | `pricing` | Free vs paid, the self-hosting path, consistent with the open-source model. |
 | `signup` | Start of the mock signup, which goes through to a first-value screen. The last screen says it is a preview. Stores nothing. |
 
@@ -190,6 +191,79 @@ element, without nav, header, footer and aside). The guide may share pages with 
 The template's `scripts/build.mjs` generates the Markdown versions, `/llms.txt` and
 `/llms-full.txt` from the HTML pages; any build that publishes the same files works.
 
+**In the evidence bundle.** Reviewers see only the frozen bundle, so `greenhouse capture
+--greenhouse-yaml` freezes the guide too (bundle manifest v4). Every distinct path in `docs:`
+(lists flattened, `#anchor`s dropped) that is not already a captured route gets its own folder,
+numbered in section order and named after the first section on it:
+
+```text
+docs/
+  01-overview/
+    text.txt      visible text of the desktop render (same extraction as pages/)
+    desktop.png   full-page desktop screenshot (no mobile, no motion)
+    page.md       the page's <link rel="alternate" type="text/markdown">, when it links one on the
+                  deployment's origin and it returns Markdown
+  02-features/ ...
+  llms.txt        /llms.txt, when served
+pages/<NN>-<route>/page.md   Markdown of a route that is also a guide page
+```
+
+A guide path the content map already captures (`docs.architecture` on `content.architecture`'s
+page) is not visited twice: its `pages/` entry lists the sections in `pages[].docs`, and its
+Markdown is saved as `pages/<NN>-<route>/page.md`. `manifest.json`'s `docs` maps each section to
+its paths (as written, anchors kept) and the files holding each one
+(`docs.sections.<key>[].files.{text,desktop,markdown}`), lists the visited guide pages with status,
+title and Markdown outcome (`docs.pages[]`, with a note when a linked alternate was cross-origin,
+failed or returned HTML), carries the `docs:` block's errors, and records `docs.llms_txt`. Without
+a `docs:` block, capture fetches none of this and the manifest has no `docs` field.
+
+## Vision-first and the product-site playbook (decision 0008)
+
+Package sites are in-house brainstorming that convinces the owner the product will be built this
+way. Two standing rules apply to every project:
+
+**Rule 1, vision-first.** Every feature is shown working. No "coming next", "not available yet",
+"not measured yet", "results pending", "waiting for results", no pending or progress cells, no
+framing that waits for results. Benchmarks show confident, full results; mock figures are allowed
+on these terms:
+
+- Mark every sample figure with `data-mock`, on the number itself or on the table, chart, card or
+  figure that holds it. Every number inside counts.
+- Put the note **"Sample figures for the private preview"** beside it: inside the marked element,
+  or in the same `figure`, `table`, `section`, `article` or `aside`. A small caption is enough.
+- List every number in `MOCK_FIGURES.md` at the repository root: one Markdown table with a `Page`
+  and a `Figure` column (more columns are fine). Write the figure as the page shows it; every
+  number in the `Figure` cell is listed for the page(s) in the `Page` cell.
+
+```markdown
+| Page | Figure | What it shows |
+|---|---|---|
+| /benchmarks/ | BotRampart: 99.2% of bots stopped, p99 3 ms | Detection benchmark, our row |
+| /benchmarks/, / | Vendor B: 87% of bots stopped | Detection benchmark, vendor B row |
+```
+
+Sample figures on these terms are not unsupported claims: `claim-sweep` treats a sentence whose
+numbers are all listed for its page (on a page with the note) as covered by `MOCK_FIGURES.md`, and the
+rubric's `evidence_truth` does not ask for real measurement or a sourced, dated comparison for
+them. Facts about the outside world (a market figure, a vendor's feature, a law) still go in
+`claims.yaml`, and invented customers, testimonials and logos still fail `social-proof`.
+
+**Rule 2, the playbook** (the Mastra study):
+
+| Practice | Checked by |
+|---|---|
+| The same two calls to action on every page: **Get a demo** plus **Quickstart** or **Copy agent prompt**, each with the same target everywhere | `same-ctas` gate |
+| The menu and the footer list the same products | `menu-footer-parity` gate |
+| Plain-text docs: `llms.txt` and a Markdown twin of every docs page | `docs` gate (decision 0006) |
+| No content hidden until scroll, and none hidden without JavaScript | `no-scroll-reveal` and `no-js-content` gates |
+| Real product screens (the product's own UI, console, CLI output) instead of illustrations | panel (`product_playbook`) |
+| Menus: a one-word product name and a five-word job per entry | panel |
+| Two-tone headlines: a bold claim plus a grey follow-on | panel |
+| Feature cards: a name, a three-word punchline, one concrete sentence | panel |
+| Solutions pages by buyer, none thin | panel |
+
+"Get a demo" is exempt from `product-voice`'s `demo` entry; any other "demo" wording still fails.
+
 ## Rules checked by gates
 
 - Every page has `<title>`, one `<h1>`, `lang` on `<html>`, no placeholder text (`lorem`, `TODO`, `TBD`, `[placeholder]`).
@@ -208,9 +282,11 @@ The template's `scripts/build.mjs` generates the Markdown versions, `/llms.txt` 
 - Code samples in docs that call the product use `<pre><code data-op="operationId">`; every `operationId` must exist in the spec.
 - Sites are **public** (owner decision 2026-11-18) but send `X-Robots-Tag: noindex` (via `_headers`)
   and `<meta name="robots" content="noindex">` until the owner publishes at graduation.
-- Copy reads as a shipping product, in present tense (`product-voice` gate, decision 0005): no
-  framing of the product as hypothetical, planned, proposed, a concept, a demo, a prototype or "by
-  design". Honesty still holds: where a fact cannot be sourced, cut the sentence rather than hedge it.
+- Copy reads as a shipping product, in present tense (`product-voice` gate, decisions 0005 and
+  0008): no framing of the product as hypothetical, planned, proposed, a concept, a demo, a
+  prototype or "by design", and nothing shown as waiting for results. Sample figures carry the note
+  and are listed in `MOCK_FIGURES.md` (`mock-figures` gate). Facts about the outside world are
+  sourced in `claims.yaml`.
 - No invented testimonials, logos, customer counts or quotes.
 - No text aimed at reviewers or hidden from humans.
 - No secrets anywhere in the repo or the build output.
@@ -240,8 +316,11 @@ these deterministic gates and writes `checks.json` (`schemas/checks.schema.json`
 | `links` | Every same-origin link, image, script and stylesheet on every reachable page resolves. URLs Cloudflare writes into served pages under `/cdn-cgi/` (email obfuscation's `/cdn-cgi/l/email-protection`) are the host's and are listed as ignored. |
 | `page-structure` | Every page has `lang`, a `<title>` and exactly one `<h1>`. |
 | `placeholder` | No `lorem`, `TODO`, `TBD`, `[placeholder]`, "coming soon" or "coming in package vN" in visible text. |
-| `product-voice` | None of the decision 0005 banned list (by design, in design, planned, plan to / plans to / planning to, propose / proposes / proposed / proposing / proposal / proposals, hypothetical, concept, demo / demos, mockup / mockups / mock-up / mock-ups, prototype / prototypes, roadmap, coming soon, not (yet) built, not for sale, nothing is for sale, for sale yet, illustrative, not a real, first build, come(s) later, ship(s) later, architecture plan, placeholder copy), case-insensitive, whole words only (a "Concepts" heading, "value proposition" and "demonstrate" pass), in the visible text of any page or the 404 page, `<title>`, `<meta content>`, `alt` / `title` / `aria-label` / `aria-description` / `placeholder` attributes, JSON-LD, JavaScript string literals (inline and served, imports followed), `/llms.txt`, `/llms-full.txt` or any linked same-origin `.txt` / `.yaml` / `.md` file. HTML comments are not read. Each hit is listed with its page or file, location and a snippet. |
+| `product-voice` | None of the decision 0005 banned list (by design, in design, planned, plan to / plans to / planning to, propose / proposes / proposed / proposing / proposal / proposals, hypothetical, concept, demo / demos, mockup / mockups / mock-up / mock-ups, prototype / prototypes, roadmap, coming soon, not (yet) built, not for sale, nothing is for sale, for sale yet, illustrative, not a real, first build, come(s) later, ship(s) later, architecture plan, placeholder copy) or the decision 0008 rule-1 list (coming next; not available yet / not yet available; not measured yet / not yet measured; results pending / result pending / pending results; until results land / until the results land; waiting for results / waiting for the results / awaiting results), case-insensitive, whole words only (a "Concepts" heading, "value proposition" and "demonstrate" pass; the call to action "Get a demo" is exempt), and no table cell whose whole text is pending, in progress, TBD, TBA, measuring, not measured, to be measured, awaiting results or soon, in the visible text of any page or the 404 page, `<title>`, `<meta content>`, `alt` / `title` / `aria-label` / `aria-description` / `placeholder` attributes, JSON-LD, JavaScript string literals (inline and served, imports followed), `/llms.txt`, `/llms-full.txt` or any linked same-origin `.txt` / `.yaml` / `.md` file. HTML comments are not read. Each hit is listed with its page or file, location and a snippet. |
 | `docs` | The user guide (decision 0006): `greenhouse.yaml` has a `docs:` block with all thirteen sections; each section's pages return HTML with status 200, every `#anchor` exists, and each section meets its word floor; the architecture section has a diagram; with a `spec/openapi.yaml`, the API reference names every operation (its `operationId` or its path); every docs page has a Markdown version; `/llms.txt` lists every docs page and `/llms-full.txt` carries every docs page. Headings without an `id` warn. |
+| `mock-figures` | Decision 0008: every `data-mock` figure has the note "Sample figures for the private preview" beside it (inside it, or in the same `figure`, `table`, `section`, `article` or `aside`) and every number in it is listed for its page in `MOCK_FIGURES.md`; `MOCK_FIGURES.md` exists when any page marks a figure or shows the note; a page with the note marks its figures. A listed page that marks nothing, or that the crawl did not reach, warns. No marked figure, no note and no file: pass. |
+| `same-ctas` | Decision 0008: every page has a link or button labelled "Get a demo" and one labelled "Quickstart" or "Copy agent prompt" (case-insensitive, arrows ignored); the second label is the same on every page, and each goes to the same place on every page. |
+| `menu-footer-parity` | Decision 0008: every page has a `<footer>`, and it links to every same-origin page the main menu links to (the first `<header>`, else the first `<nav>`; the home link and the two calls to action excluded). |
 | `noindex` | Every page sends `X-Robots-Tag: noindex` and has the robots meta tag. |
 | `spec-samples` | Every `<code data-op>` sits in a `<pre>` and names an operation in the spec (no samples: `warn`). |
 | `secrets` | Secret patterns in committed files, build output and deployed pages (values never printed). |
@@ -252,6 +331,7 @@ these deterministic gates and writes `checks.json` (`schemas/checks.schema.json`
 | `lighthouse` | Mobile form factor on `/` and every `content:` path, median of 5 runs per route under `~/.greenhouse/perf.lock`. Fails if any route's median performance is below 90, CLS above 0.1 or TBT above 200 ms. Accessibility: 90+ pass, 85-89 `warn`, under 85 fail. |
 | `reduced-motion` | With `prefers-reduced-motion: reduce` emulated, scrolling `/` runs no transform or opacity animation longer than 200 ms and no scroll-linked animation, and all content is visible. A failure is the quality cap `motion_ignores_reduced_motion` (7.0). |
 | `no-js-content` | With JavaScript disabled, every required content section renders visible text (nothing stuck at opacity 0). |
+| `no-scroll-reveal` | Decision 0008: `/` and every `content:` path loaded with JavaScript on at 1440x900, not scrolled, after 1.5 s for entrance motion: no text in `<main>` (else `<body>`) is laid out but invisible (opacity under 0.05 or `visibility: hidden`). Menus, dialogs, tab panels, popovers and closed `<details>` are not counted. A reveal on load passes; a reveal that waits for the reader to scroll fails. |
 | `webkit-iphone` | `/` and every `content:` path in Playwright WebKit with the iPhone 15 Pro profile: no page error, no same-origin request that fails or returns 4xx/5xx, no same-origin stylesheet without CSS rules, every non-local `@font-face` loads, no CSP violation blocking a same-origin resource, and the `h1`'s primary font and the body background match Chromium. Host-injected Cloudflare scripts (`static.cloudflareinsights.com`, `/cdn-cgi/`) are ignored. A fold screenshot per route is saved to `<round-dir>/evidence/webkit-iphone/`; `greenhouse capture --round-dir` copies them into the evidence bundle (`webkit-iphone/`, listed in the manifest's `webkit_iphone`), so reviewers see each page as an iPhone renders it. |
 | `template-likeness` | Reports nav labels, the heading outline and a similarity score against `template/` and portfolio siblings, as panel evidence. Fails only on near-identity to `template/` (≥ 0.8). Run on `template/` itself it fails by design (similarity 1.0): the template is an unstyled example, not an all-green target. |
 
@@ -276,7 +356,7 @@ the panel sees it. A claim passes only when both judges say its quote supports i
 | Gate | Mechanical proof | Judges | Cap on failure |
 |---|---|---|---|
 | `claims` | Every `source_url` fetched with a browser User-Agent (429 retried once) and archived under `--archive-dir` (default `<round-dir>/sources/`, else `~/.greenhouse/archive/<slug>-<sha12>/`: one file per body, named by its sha256, plus `index.json`). The `quote` must be in the source verbatim (up to whitespace, spacing around punctuation, quote marks, dashes and case; `...` marks an omission); pages that need JavaScript are rendered in the browser. A source that answers with a bot challenge (Imperva, Cloudflare, DataDome, HUMAN, AWS WAF or Akamai) instead of its content counts as refused automation, as a 403 does: `warn` when the claim was checked within 30 days, else fail. | Does the quote support the claim exactly as written? | `unsupported_claim` (7.0) |
-| `claim-sweep` | Sentences on every page with a figure, a comparison, a superlative or research, not covered by a ledger claim. | Is this a claim about the outside world that needs a public source? | failed gate (7.0) |
+| `claim-sweep` | Sentences on every page with a figure, a comparison, a superlative or research, not covered by a ledger claim, nor by `MOCK_FIGURES.md` (every number in the sentence listed for its page, on a page with the sample note; decision 0008). | Is this a claim about the outside world that needs a public source? | failed gate (7.0) |
 | `pricing` | Tiers, prices, overages, cost to serve (a free tier below cost only with `below_cost_reason`) and the self-hosting path against `cost_model:` (above). | Does the pricing text contradict the cost model? | failed gate (7.0) |
 | `social-proof` | Testimonials, attributions, logo walls, customer counts, ratings and press mentions not backed by the ledger. | Is this presented as real social proof for this product? | `invented_social_proof` (5.0) |
 | `reviewer-instruction` | Pages, `/llms.txt`, `/robots.txt` and similar files: instructions to models or reviewers in comments, attributes, scripts or hidden text fail outright; the same words in visible text, or text that mentions reviewers or models, go to the judges. | Is this addressed to an AI reviewer or judge rather than to visitors? | `reviewer_instruction` (5.0) |

@@ -104,7 +104,36 @@ test("rubric v2 loads: 8 dimensions, design-led weights 0.65, caps 7.0, 6.0 and 
   assert.deepEqual(r.caps.map((c) => [c.id, c.max]), [["quality", 7], ["sameness", 6], ["integrity", 5]]);
   assert.deepEqual(r.graduation.focus_dimensions, ["design_identity", "motion_interaction", "copy_voice", "distinctness"]);
   assert.equal(r.graduation.focus_median_min, 8.5);
-  assert.equal(loadRubric().version, 2); // the default is the current rubric
+});
+
+test("rubric v3 loads: 9 dimensions with product_playbook, design-led weights 0.70, playbook a focus dimension (decision 0008)", () => {
+  const r = loadRubric(3);
+  assert.equal(r.version, 3);
+  assert.deepEqual(
+    r.dimensions.map((d) => [d.id, d.weight]),
+    [
+      ["design_identity", 0.2],
+      ["motion_interaction", 0.1],
+      ["copy_voice", 0.15],
+      ["distinctness", 0.1],
+      ["product_playbook", 0.15],
+      ["conviction", 0.1],
+      ["docs_buildability", 0.1],
+      ["evidence_truth", 0.05],
+      ["business_signup", 0.05],
+    ],
+  );
+  assert.ok(Math.abs(r.dimensions.reduce((s, d) => s + d.weight, 0) - 1) < 1e-9);
+  const nine = Object.fromEntries(r.dimensions.map((d) => [d.id, d.nine ?? ""]));
+  assert.match(nine.copy_voice, /results pending/);
+  assert.match(nine.conviction, /Vision-first/);
+  assert.match(nine.evidence_truth, /MOCK_FIGURES\.md/);
+  assert.match(nine.product_playbook, /Get a demo/);
+  assert.deepEqual(r.caps.map((c) => [c.id, c.max]), [["quality", 7], ["sameness", 6], ["integrity", 5]]);
+  assert.match(r.caps[0].when ?? "", /hedged_vision/);
+  assert.deepEqual(r.graduation.focus_dimensions, ["design_identity", "motion_interaction", "copy_voice", "distinctness", "product_playbook"]);
+  assert.equal(r.graduation.focus_median_min, 8.5);
+  assert.equal(loadRubric().version, 3); // the default is the current rubric
 });
 
 test("rubric: focus_dimensions must name dimensions and needs focus_median_min", () => {
@@ -192,4 +221,23 @@ test("review v2: the template_structure flag is required and boolean (decision 0
   const wrong = structuredClone(ok);
   wrong.flags.template_structure = "yes";
   assert.equal(validate("review", wrong).valid, false);
+});
+
+test("review v3: hedged_vision is an optional boolean flag; a rule-tagged finding must be severity must (decision 0008)", () => {
+  const ok = readDocument(join(FIX, "review", "valid", "review.json")) as { flags: Record<string, unknown>; findings: Record<string, unknown>[] };
+  const flagged = structuredClone(ok);
+  flagged.flags.hedged_vision = true;
+  assert.equal(validate("review", flagged).valid, true);
+  flagged.flags.hedged_vision = "yes";
+  assert.equal(validate("review", flagged).valid, false);
+  const finding = { id: "f-rule", dimension: "copy_voice", severity: "must", title: "Benchmarks say results pending", detail: "", evidence: ["/bench/"], rule: "vision_first" };
+  const tagged = structuredClone(ok);
+  tagged.findings.push(finding);
+  assert.equal(validate("review", tagged).valid, true, validate("review", tagged).errors.join("; "));
+  const soft = structuredClone(ok);
+  soft.findings.push({ ...finding, severity: "should" });
+  assert.equal(validate("review", soft).valid, false);
+  const unknown = structuredClone(ok);
+  unknown.findings.push({ ...finding, rule: "taste" });
+  assert.equal(validate("review", unknown).valid, false);
 });

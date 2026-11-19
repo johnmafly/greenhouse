@@ -41,7 +41,7 @@ node cli/src/main.ts score --round-dir portfolio/<slug>/rounds/01       # writes
 node cli/src/main.ts score --round-dir portfolio/<slug>/rounds/01 --check  # audit: recompute, compare bytes
 ```
 
-## Scoring rules (`greenhouse score`, rubric v2, decision 0004)
+## Scoring rules (`greenhouse score`, rubric v3, decisions 0004 and 0008)
 
 - **Inputs** must agree or the round is not scored (exit 1): submission and checks share
   slug, round, sha and deployment URL; every review uses the rubric's version, the same brief
@@ -55,7 +55,10 @@ node cli/src/main.ts score --round-dir portfolio/<slug>/rounds/01 --check  # aud
 - **Caps** (one entry per reason, lowest first; the composite takes the lowest max):
   - 7.0 (`quality`): any failed gate, reason `failed_gate:<id>`, except these named gates:
     `claims` → `unsupported_claim`, `critical-assumptions` → `untested_critical_assumption`,
-    `intake-drift` → `intake_drift`, `reduced-motion` → `motion_ignores_reduced_motion`.
+    `intake-drift` → `intake_drift`, `reduced-motion` → `motion_ignores_reduced_motion`,
+    `product-voice` → `hedged_copy`.
+  - 7.0 (`quality`): a strict majority of the panel sets `flags.hedged_vision` (optional in a
+    review; decision 0008, rule 1), reason `hedged_vision`.
   - 6.0 (`sameness`): a strict majority of the panel (2 of 3, 3 of 4, 3 of 5) sets
     `flags.template_structure`, reason `template_sameness`: the structure or look is template
     output (a stock hero + feature grid + pricing table, the owner's example sections used as the
@@ -67,12 +70,17 @@ node cli/src/main.ts score --round-dir portfolio/<slug>/rounds/01 --check  # aud
     reports it to the owner (score.json records only the reason).
 - **gates_green**: `all_green` and no failed gate (`warn` and `skip` do not fail).
 - **graduation_eligible**: not provisional, gates green, composite ≥ 9.0, every dimension
-  median ≥ 8.0, the rubric's `graduation.focus_dimensions` (v2: `design_identity`,
-  `motion_interaction`, `copy_voice`, `distinctness`) each with a median ≥ `focus_median_min`
+  median ≥ 8.0, the rubric's `graduation.focus_dimensions` (v3: `design_identity`,
+  `motion_interaction`, `copy_voice`, `distinctness`, `product_playbook`) each with a median ≥ `focus_median_min`
   (8.5), every reviewer composite ≥ 8.5.
-- **Rubric version**: v2 is current (`CURRENT_RUBRIC_VERSION`, the loader's default). v1 was
-  retired before any round was scored on it and is only in git history; a review that says
-  `rubric_version: 1` is refused.
+- **must_fix** (decision 0008): a review finding may carry `rule` (`vision_first` or `playbook`),
+  and must then be severity `must`. `score.json` lists every rule-tagged finding in `must_fix`,
+  merged across reviewers by rule, dimension and title (case-insensitive), sorted; the field is
+  absent when there are none. The ruling lists each one as a must-fix item for the next round.
+- **Rubric version**: v3 is current (`CURRENT_RUBRIC_VERSION`, the loader's default). v2 stays in
+  `rubric/` so a round judged on it still scores (each review names its version, and the scorer
+  loads that file). v1 was retired before any round was scored on it and is only in git history;
+  a review that says `rubric_version: 1` is refused.
 - **provisional** is true unless `--validated` is passed (judge validation tests 1 to 5 pass).
   A provisional score never graduates.
 - **Determinism**: output depends only on the input files and flags. `decided_at` defaults to

@@ -2,6 +2,8 @@
 //   reduced-motion: with prefers-reduced-motion: reduce, scrolling the home page runs no
 //     transform/opacity animation longer than 200 ms and no scroll-linked animation, and all
 //     content is visible once it is in view.
+//   no-scroll-reveal (decision 0008, rule 2): with JavaScript on and the page not scrolled, no text
+//     in <main> waits at opacity 0 or visibility hidden for a scroll to reveal it.
 //   no-js-content: with JavaScript disabled, every required content section renders visible text
 //     (nothing stuck at opacity 0 waiting for a scroll-reveal script).
 import type { Browser, Page } from "playwright";
@@ -20,6 +22,8 @@ interface TextScanArg {
   anchor: string | null;
   /** Only elements that intersect the viewport. */
   viewportOnly: boolean;
+  /** More selectors whose content is not counted (menus, dialogs, tab panels). */
+  skip?: string;
 }
 interface TextScan {
   found: boolean;
@@ -46,7 +50,7 @@ function scanText(arg: TextScanArg): TextScan {
     if (root && !(root.textContent ?? "").trim()) root = root.closest("section, article, main") ?? root.parentElement;
   } else root = document.querySelector("main") ?? document.body;
   if (!root) return { found: false, visibleChars: 0, hidden: [] };
-  const skip = "script, style, noscript, template, svg, [aria-hidden='true'], [role='tooltip'], [hidden]";
+  const skip = "script, style, noscript, template, svg, [aria-hidden='true'], [role='tooltip'], [hidden]" + (arg.skip ? `, ${arg.skip}` : "");
   let visibleChars = 0;
   const hidden: TextScan["hidden"] = [];
   const els = [root, ...root.querySelectorAll("*")];
@@ -273,4 +277,47 @@ export async function noJsContentGate(browser: Browser | null, base: string | nu
   return bad.length
     ? gate(id, "fail", `with JavaScript disabled, ${bad.length} of ${results.length} content sections hide text: ${bad.map((b) => `${b.section} (${b.problem})`).slice(0, 5).join("; ")}`, metrics, { sections: results })
     : gate(id, "pass", `with JavaScript disabled, all ${results.length} content sections render visible text`, metrics, { sections: results.map(({ hidden: _h, ...r }) => r) });
+}
+
+/** How long a page may run its entrance motion before no-scroll-reveal reads it. */
+export const REVEAL_SETTLE_MS = 1500;
+/** Interactive content that is hidden until opened, not until scrolled. */
+const REVEAL_SKIP = "nav, header, dialog, [role='dialog'], [role='menu'], [role='tabpanel'], [popover], details:not([open])";
+
+/**
+ * no-scroll-reveal (decision 0008, rule 2): content is on the page when it loads. Loads each route
+ * with JavaScript on at 1440x900, does not scroll, waits for entrance motion to settle, and fails
+ * when text in <main> (else <body>) is laid out but invisible (effective opacity under 0.05 or
+ * visibility hidden): a scroll-reveal that hides content until the reader scrolls to it.
+ */
+export async function noScrollRevealGate(browser: Browser | null, base: string | null, routes: readonly string[], why = "no site to check", settleMs = REVEAL_SETTLE_MS): Promise<Gate> {
+  const id = "no-scroll-reveal";
+  if (!base || !browser) return gate(id, "fail", `cannot run: ${why}`);
+  const list = [...new Set(routes)].slice(0, 30);
+  if (!list.length) return gate(id, "fail", "cannot run: no routes to load");
+  const context = await browser.newContext({ viewport: VIEWPORT });
+  const page = await context.newPage();
+  const results: { path: string; visible_chars: number; hidden: TextScan["hidden"]; problem?: string }[] = [];
+  try {
+    for (const path of list) {
+      const res = await page.goto(new URL(path.replace(/^\//, ""), base).toString(), { waitUntil: "load", timeout: 30_000 });
+      if (!res || res.status() >= 400) {
+        results.push({ path, visible_chars: 0, hidden: [], problem: `HTTP ${res?.status() ?? "no response"}` });
+        continue;
+      }
+      await page.waitForTimeout(settleMs);
+      const scan = await page.evaluate(scanText, { anchor: null, viewportOnly: false, skip: REVEAL_SKIP });
+      const r = { path, visible_chars: scan.visibleChars, hidden: scan.hidden.slice(0, 10) };
+      results.push(scan.hidden.length ? { ...r, problem: `${scan.hidden.length} text element(s) hidden until scrolled to (opacity 0 or visibility hidden)` } : r);
+    }
+  } catch (e) {
+    return gate(id, "fail", `cannot run: ${(e as Error).message.split("\n")[0]}`);
+  } finally {
+    await context.close().catch(() => undefined);
+  }
+  const bad = results.filter((r) => r.problem);
+  const metrics = { pages: results.length, failing: bad.length, hidden_text: bad.reduce((n, b) => n + b.hidden.length, 0) };
+  return bad.length
+    ? gate(id, "fail", `without scrolling, ${bad.length} of ${results.length} pages hide text: ${bad.slice(0, 4).map((b) => `${b.path} (${b.problem})`).join("; ")}`, metrics, { pages: bad })
+    : gate(id, "pass", `all text in <main> is visible on load, without scrolling, on ${results.length} pages`, metrics);
 }

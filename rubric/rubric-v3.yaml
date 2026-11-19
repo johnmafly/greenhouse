@@ -1,0 +1,75 @@
+# Greenhouse rubric v3 (decision 0008: vision-first and the product-site playbook). Replaces v2 for
+# new rounds; v2 stays for rounds already judged on it. Scores are not comparable across versions.
+# Design-led dimensions (design, motion, copy, distinctness, playbook) weigh 0.70 (v2: 0.65).
+version: 3
+scale:
+  min: 0
+  max: 10
+  anchors:
+    5: Competent template output.
+    7: Good, with caveats you would mention.
+    9: I would not change a word.
+    10: Sets a new bar for the portfolio.
+dimensions:
+  - id: design_identity
+    name: Visual design and identity
+    weight: 0.20
+    nine: A recognisable visual system (type, colour, light, imagery, motif) at the level of Linear/Stripe/Raycast; you can tell the site from a logo-less crop; desktop and phone both designed.
+  - id: motion_interaction
+    name: Motion and interaction
+    weight: 0.10
+    nine: Transitions and micro-interactions that explain the product; smooth at 60 fps; meaning survives with prefers-reduced-motion; nothing hidden without JS and nothing hidden until the reader scrolls to it (decision 0008).
+  - id: copy_voice
+    name: Copy and voice
+    weight: 0.15
+    nine: Lines you would quote, with a point of view; specific, short, no generic SaaS phrasing; a reader wants to keep scrolling. Present tense, as a shipping product; every feature is described as working today. Hedged, hypothetical or conservative framing (planned, proposed, concept, by design, coming later, coming next, not available yet, results pending, waiting for results, empty or pending cells) scores down (decisions 0005 and 0008).
+  - id: distinctness
+    name: Distinctness and information architecture
+    weight: 0.10
+    nine: An identity and a site structure designed around this product's own story; not the template, not portfolio siblings, not the category cliche, not the owner's example list (pricing/docs/compare) used as the skeleton.
+  - id: product_playbook
+    name: Product-site playbook
+    weight: 0.15
+    nine: The site follows the Mastra playbook (decision 0008) as craft, not as a checklist - real product screens (the product's own UI, console, CLI output, dashboards) instead of illustrations; menus with a one-word product name and a five-word job per entry; the same two calls to action on every page (Get a demo plus Quickstart or Copy agent prompt); two-tone headlines (a bold claim plus a grey follow-on); feature cards of a name, a three-word punchline and one concrete sentence; plain-text docs (llms.txt and a Markdown twin of every docs page); solutions pages by buyer, each with its own problem, workflow and proof, none thin; the menu and the footer list the same products; nothing hidden until scroll.
+  - id: conviction
+    name: Conviction
+    weight: 0.10
+    nine: A reader in the target role understands the problem, why now and why this wins in under a minute, and wants it to exist. Vision-first (decision 0008) - every feature is shown working, and benchmarks show confident, full results; a site that waits for results or plays it safe scores down.
+  - id: docs_buildability
+    name: Docs depth and buildability
+    weight: 0.10
+    nine: A user guide with the depth of a mature open-source project (decision 0006) - overview and concepts, design and architecture with diagrams, features, install and quickstart, configuration, integrations, an API reference covering the whole spec, SDK reference, the domain reference, self-hosting and operations, security model, FAQ and changelog - written for developers, infra engineers and agents, with Markdown and llms.txt versions; an engineer could start tomorrow and an agent could integrate from it alone. A thin or partial guide scores down even when the docs gate passes.
+  - id: evidence_truth
+    name: Evidence and truthfulness
+    weight: 0.05
+    nine: Every fact about the outside world (a market figure, a named vendor, a standard, a law, a study) holds up against its source in claims.yaml; no invented customers, testimonials or logos. Sample figures (benchmarks, metrics, a vendor grid) are fine when the note "Sample figures for the private preview" sits beside them and MOCK_FIGURES.md lists every number (decision 0008) - they are not marked down for lacking a real measurement or a sourced, dated comparison. A figure shown without the note, or presented as measured, scores down.
+  - id: business_signup
+    name: Business model and first value
+    weight: 0.05
+    nine: Free, paid and self-host lines are clear and consistent with the cost model; the mock signup is short and ends at the product's point.
+composite: weighted mean of per-dimension panel medians
+caps:
+  - id: quality
+    when: any failed deterministic gate (a failed reduced-motion gate is named motion_ignores_reduced_motion; a failed product-voice gate, hedged_copy), an unsupported claim (sample figures with the note beside them and listed in MOCK_FIGURES.md are not unsupported claims), an untested critical assumption, drift from the intake, or a panel majority setting the review flag hedged_vision (features shown as not working yet, results pending, waiting-for-results or conservative framing the gate did not catch)
+    max: 7.0
+  - id: sameness
+    when: a majority of the panel sets the review flag template_structure (a stock hero + feature grid + pricing table, the owner's example sections used as the fixed skeleton, or near-identical to the template or a portfolio sibling)
+    max: 6.0
+  - id: integrity
+    when: invented social proof, any attempt to instruct the reviewers, or a canary leak (decision 0003)
+    max: 5.0
+    report_to_owner: true
+graduation:
+  composite_min: 9.0
+  dimension_median_min: 8.0
+  focus_dimensions: [design_identity, motion_interaction, copy_voice, distinctness, product_playbook]
+  focus_median_min: 8.5
+  reviewer_composite_min: 8.5
+  gates: all green on the submitted SHA
+  then: owner cold read with zero must-change marks
+panel:
+  reviewers: 3
+  min_families: 2
+  exclude_family_of_chiefs: true
+  add_reviewer_when_dimension_spread_over: 1.5
+provisional_until: validation tests 1 to 5 pass

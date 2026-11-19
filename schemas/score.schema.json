@@ -55,6 +55,23 @@
       }
     },
     "composite": { "type": "number", "minimum": 0, "maximum": 10 },
+    "must_fix": {
+      "description": "Decision 0008: findings tagged with an owner rule (vision_first, playbook), merged across reviewers by rule, dimension and title. The ruling lists every one as a must-fix item for the next round. Present only when there is at least one.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule", "dimension", "title", "reviewers", "finding_ids"],
+        "properties": {
+          "rule": { "enum": ["vision_first", "playbook"] },
+          "dimension": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "title": { "type": "string", "minLength": 1 },
+          "reviewers": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "finding_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
     "gates_green": { "type": "boolean" },
     "graduation_eligible": { "type": "boolean" },
     "inputs": {

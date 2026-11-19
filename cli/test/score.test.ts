@@ -332,6 +332,15 @@ test("mismatched submission, checks, rubric, brief or bundle fails", () => {
   assert.throws(() => computeScore(bundle), /different evidence bundle/);
 });
 
+test("deployment_url: a trailing slash on the bare origin is the same deployment; another host is not", () => {
+  const slash = clone(base());
+  slash.checks.deployment_url = slash.submission.deployment_url + "/";
+  assert.deepEqual(computeScore(slash), computeScore(base()));
+  const other = clone(base());
+  other.checks.deployment_url = "https://other.pages.dev/";
+  assert.throws(() => computeScore(other), /checks\.json deployment_url/);
+});
+
 test("without checks.bundle_hash, inputs.bundle_hash comes from the reviews", () => {
   const inp = clone(base());
   delete inp.checks.bundle_hash;
@@ -388,4 +397,41 @@ test("greenhouse score: bad input exits 1, usage errors exit 2", () => {
   assert.equal(cli().status, 2);
   assert.equal(cli("--round-dir", ROUND, "--cost-usd", "lots").status, 2);
   assert.equal(cli("--round-dir", ROUND, "--decided-at", "tomorrow", "--out", "-").status, 1);
+});
+
+// ---- decision 0008: hedged_vision cap and must_fix ----
+
+test("cap 7.0: a panel majority flagging hedged_vision caps at the quality cap (hedged_vision); one reviewer does not", () => {
+  const flag = (idx: number[]) => {
+    const inp = clone(base());
+    inp.reviews.forEach((r, i) => (r.review.flags.hedged_vision = idx.includes(i)));
+    return inp;
+  };
+  const two = computeScore(flag([0, 2]));
+  assert.deepEqual(two.caps_applied, [{ reason: "hedged_vision", max: 7 }]);
+  assert.equal(two.composite, 7);
+  assert.deepEqual(computeScore(flag([1])).caps_applied, []);
+  // A v2 review without the flag scores as before.
+  assert.equal(computeScore(base()).composite, 9);
+});
+
+test("cap 7.0: a failed product-voice gate is named hedged_copy (decision 0008)", () => {
+  const s = computeScore(failGate(base(), "product-voice"));
+  assert.deepEqual(s.caps_applied, [{ reason: "hedged_copy", max: 7 }]);
+});
+
+test("must_fix: rule-tagged findings merged across reviewers, sorted; absent when there are none", () => {
+  assert.equal("must_fix" in computeScore(base()), false);
+  const inp = clone(base());
+  const f = (id: string, rule: "vision_first" | "playbook", dimension: string, title: string) => ({ id, dimension, severity: "must" as const, title, detail: "", evidence: ["/"], rule });
+  inp.reviews[0].review.findings.push(f("a1", "vision_first", "conviction", "Benchmark says results pending"), f("a2", "playbook", "product_playbook", "Footer misses Detect"));
+  inp.reviews[1].review.findings.push(f("b7", "vision_first", "conviction", "benchmark says results pending "));
+  const s = computeScore(inp);
+  const ids = (x: Review) => x.reviewer.id;
+  const [r0, r1] = [ids(inp.reviews[0].review), ids(inp.reviews[1].review)];
+  assert.deepEqual(s.must_fix, [
+    { rule: "playbook", dimension: "product_playbook", title: "Footer misses Detect", reviewers: [r0], finding_ids: [`${r0}:a2`] },
+    // Titles merge case-insensitively; the first reviewer by id supplies the wording.
+    { rule: "vision_first", dimension: "conviction", title: r0 < r1 ? "Benchmark says results pending" : "benchmark says results pending", reviewers: [r0, r1].sort(), finding_ids: [`${r0}:a1`, `${r1}:b7`].sort() },
+  ]);
 });

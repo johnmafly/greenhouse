@@ -3,6 +3,10 @@
 Date: 2026-11-18. Source: the owner, relayed word for word by VC Joe. Applies to every Greenhouse
 project.
 
+> Amended by [0008](0008-vision-first-and-playbook.md): point 2 no longer covers metrics or
+> availability (sample figures are shown with a note and listed in `MOCK_FIGURES.md`, and every
+> feature is shown working); point 3's list gains the rule-1 forms, and "Get a demo" is exempt.
+
 ## Context: the owner's words
 
 > "I don't like to see 'by design', 'planned', 'the proposal' around the site, it keeps reminding me

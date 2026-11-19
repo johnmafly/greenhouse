@@ -96,7 +96,10 @@ export interface Finding {
   title: string;
   detail: string;
   evidence: string[];
+  /** Decision 0008: the owner rule this finding is a miss of; always severity "must". */
+  rule?: OwnerRule;
 }
+export type OwnerRule = "vision_first" | "playbook";
 export interface Review {
   schema_version: 1;
   reviewer: { id: string; model: string; family: string; brief_version: string };
@@ -104,7 +107,14 @@ export interface Review {
   bundle_hash: string;
   scores: Record<string, number>;
   findings: Finding[];
-  flags: { invented_social_proof: boolean; reviewer_instruction: boolean; template_structure: boolean };
+  flags: { invented_social_proof: boolean; reviewer_instruction: boolean; template_structure: boolean; hedged_vision?: boolean };
+}
+export interface MustFix {
+  rule: OwnerRule;
+  dimension: string;
+  title: string;
+  reviewers: string[];
+  finding_ids: string[];
 }
 
 export interface Score {
@@ -121,6 +131,7 @@ export interface Score {
   composite_raw: number;
   caps_applied: { reason: string; max: number }[];
   composite: number;
+  must_fix?: MustFix[];
   gates_green: boolean;
   graduation_eligible: boolean;
   inputs: { checks_sha256: string; reviews_sha256: Record<string, string>; bundle_hash: string };
@@ -139,7 +150,7 @@ export interface Rubric {
   graduation: {
     composite_min: number;
     dimension_median_min: number;
-    /** Dimensions that must reach focus_median_min (rubric v2: the four design-led ones). */
+    /** Dimensions that must reach focus_median_min (rubric v3: the five design-led ones). */
     focus_dimensions?: string[];
     focus_median_min?: number;
     reviewer_composite_min: number;

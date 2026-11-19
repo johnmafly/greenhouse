@@ -2,7 +2,8 @@
 
 **An unstyled, working example of the package contract, not a structure to copy.** It shows the
 files `greenhouse check` reads ([`docs/package-contract.md`](../docs/package-contract.md)) and a
-site that passes the deterministic gates. Its routes, nav (Home / Docs / Pricing / Sign up), page
+site that passes the deterministic gates. Every page carries the two calls to action decision 0008
+asks for ("Get a demo" and "Quickstart") and a footer that lists the menu's pages. Its routes, nav (Home / Docs / Pricing / Sign up), page
 outline and copy are placeholders for the mechanics only: the owner's example sections (pricing,
 docs, compare) are content you must have, not a skeleton to follow. Design the site's
 information architecture, visual identity, motion and voice around the product's own story, and
@@ -19,6 +20,7 @@ and reviewers cap template-shaped sites under the rubric's sameness cap.
 | `scripts/build.mjs` | `npm run build`: copies `site/` to `dist/`, writes `/.well-known/greenhouse.json` with the commit sha (`CF_PAGES_COMMIT_SHA`, else `git rev-parse HEAD`) and the slug from `greenhouse.yaml`, and publishes the guide for agents: a Markdown copy of each `docs:` page (`/docs/<page>.md`), `/llms.txt` and `/llms-full.txt`. |
 | `spec/openapi.yaml` | Build spec. Every `<pre><code data-op="…">` sample must name one of its `operationId`s. |
 | `claims.yaml` | Claims ledger (`schemas/claims.schema.json`). |
+| `MOCK_FIGURES.md` | Every sample figure the site shows, by page (decision 0008). The comparison page's benchmark is marked `data-mock`, with "Sample figures for the private preview" beside it. |
 | `STATE.md` | Decisions, open findings, next steps, spend. |
 
 ## Start a project
@@ -50,6 +52,9 @@ Motion is welcome (and scored), but `greenhouse check` requires that it degrades
 - `no-js-content`: with JavaScript disabled, every content section shows its text. Do not start
   scroll-reveal content at `opacity: 0` in CSS; hide it from a script (for example add a class
   to `<html>` first) so it stays visible when the script does not run.
+- `no-scroll-reveal`: with JavaScript on, nothing in `<main>` waits at `opacity: 0` for the reader to
+  scroll to it (decision 0008). Animate content in on load, or animate content that is already
+  visible; do not hide it until it scrolls into view.
 
 ## Product voice
 
@@ -58,6 +63,17 @@ hypothetical framing ("planned", "by design", "the proposal", "concept", "demo",
 the rest of the list in `docs/package-contract.md`) in page text, meta tags, alt text, JSON-LD,
 JavaScript strings, `llms.txt` and linked text files. Where a fact cannot be sourced, cut the
 sentence rather than hedge it (decision 0005).
+
+## Vision-first and the playbook (decision 0008)
+
+Show every feature working. No "coming next", "not available yet", "results pending" or "waiting
+for results", and no pending cells (`product-voice`). Benchmarks show full results: mark each
+sample figure `data-mock`, put "Sample figures for the private preview" beside it, and list every
+number in `MOCK_FIGURES.md` (`mock-figures`). Every page carries "Get a demo" plus "Quickstart" or
+"Copy agent prompt", to the same places everywhere (`same-ctas`), and the footer lists every page
+the menu does (`menu-footer-parity`). Reviewers score the rest of the playbook (real product
+screens, one-word product names with five-word jobs, two-tone headlines, feature cards, buyer
+pages) under `product_playbook`.
 
 ## Preflight
 

@@ -4,8 +4,11 @@ import { REPO_ROOT, assertValid, readDocument } from "./schemas.ts";
 import type { CapId, Rubric } from "./schemas.ts";
 
 export const RUBRIC_DIR = join(REPO_ROOT, "rubric");
-/** The rubric new rounds are judged on (decision 0004). v1 was retired before any round was scored on it. */
-export const CURRENT_RUBRIC_VERSION = 2;
+/**
+ * The rubric new rounds are judged on (decision 0008). v2 (decision 0004) stays in rubric/ so a
+ * round already judged on it still scores and renders; v1 was retired before any round used it.
+ */
+export const CURRENT_RUBRIC_VERSION = 3;
 
 export function rubricPath(version: number): string {
   return join(RUBRIC_DIR, `rubric-v${version}.yaml`);
