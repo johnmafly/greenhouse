@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { assertValid, parseDocument } from "./schemas.ts";
-import type { Checks, Review, Rubric, Score, Submission } from "./schemas.ts";
+import type { Checks, MustFix, Review, Rubric, Score, Submission } from "./schemas.ts";
 import { capMax, loadRubric } from "./rubric.ts";
 
 /**
@@ -22,6 +22,8 @@ export const CAP_GATES: Record<string, { cap: "quality" | "integrity"; reason: s
   "canary": { cap: "integrity", reason: "canary_leak" },
   // Decision 0004: motion must respect prefers-reduced-motion.
   "reduced-motion": { cap: "quality", reason: "motion_ignores_reduced_motion" },
+  // Decision 0008, rule 1: hedged or waiting-for-results copy on the site.
+  "product-voice": { cap: "quality", reason: "hedged_copy" },
 };
 
 /**
@@ -139,6 +141,27 @@ function checkConsistency(inp: ScoreInputs): void {
   }
 }
 
+/**
+ * Decision 0008: findings tagged with an owner rule, merged across reviewers by rule, dimension and
+ * (case-insensitive) title, sorted by rule, dimension and title. The ruling lists each as must-fix.
+ */
+export function mustFix(reviews: ReviewInput[]): MustFix[] {
+  const by = new Map<string, MustFix>();
+  for (const r of reviews) {
+    for (const f of r.review.findings) {
+      if (!f.rule) continue;
+      const key = `${f.rule}\u0000${f.dimension}\u0000${f.title.trim().toLowerCase()}`;
+      const e = by.get(key) ?? { rule: f.rule, dimension: f.dimension, title: f.title.trim(), reviewers: [], finding_ids: [] };
+      if (!e.reviewers.includes(r.review.reviewer.id)) e.reviewers.push(r.review.reviewer.id);
+      e.finding_ids.push(`${r.review.reviewer.id}:${f.id}`);
+      by.set(key, e);
+    }
+  }
+  return [...by.values()]
+    .map((e) => ({ ...e, reviewers: [...e.reviewers].sort(byString), finding_ids: [...e.finding_ids].sort(byString) }))
+    .sort((a, b) => byString(a.rule, b.rule) || byString(a.dimension, b.dimension) || byString(a.title, b.title));
+}
+
 /** Compute score.json. Throws ScoreInputError when inputs are inconsistent: a round is never half-scored. */
 export function computeScore(inp: ScoreInputs): Score {
   checkConsistency(inp);
@@ -166,6 +189,9 @@ export function computeScore(inp: ScoreInputs): Score {
   if (reviews.some((r) => r.review.flags.reviewer_instruction)) caps.set("reviewer_instruction", integrity);
   const sameFlags = reviews.filter((r) => r.review.flags.template_structure).length;
   if (panelMajority(sameFlags, reviews.length)) caps.set("template_sameness", capMax(rubric, "sameness"));
+  // Decision 0008, rule 1: a panel majority finds the site hedged or waiting for results.
+  const hedged = reviews.filter((r) => r.review.flags.hedged_vision).length;
+  if (panelMajority(hedged, reviews.length)) caps.set("hedged_vision", capMax(rubric, "quality"));
   const caps_applied = [...caps]
     .map(([reason, max]) => ({ reason, max }))
     .sort((a, b) => a.max - b.max || byString(a.reason, b.reason));
@@ -184,6 +210,8 @@ export function computeScore(inp: ScoreInputs): Score {
   const reviews_sha256: Record<string, string> = {};
   for (const r of [...inp.reviews].sort((a, b) => byString(a.file, b.file))) reviews_sha256[r.file] = r.sha256;
 
+  const must_fix = mustFix(reviews);
+
   const score: Score = {
     schema_version: 1,
     slug: sub.slug,
@@ -198,6 +226,7 @@ export function computeScore(inp: ScoreInputs): Score {
     composite_raw,
     caps_applied,
     composite,
+    ...(must_fix.length ? { must_fix } : {}),
     gates_green,
     graduation_eligible,
     inputs: {

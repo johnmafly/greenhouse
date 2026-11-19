@@ -38,7 +38,28 @@ export const VOICE_LIST: [string, string[]][] = [
   ["ships later", ["ship later", "ships later"]],
   ["architecture plan", ["architecture plan", "architecture plans"]],
   ["placeholder copy", ["placeholder copy"]],
+  // Decision 0008, rule 1 (vision-first): every feature is shown working, no waiting for results.
+  ["coming next", ["coming next"]],
+  ["not available yet", ["not available yet", "not yet available"]],
+  ["not measured yet", ["not measured yet", "not yet measured"]],
+  ["results pending", ["results pending", "result pending", "pending results"]],
+  ["until results land", ["until results land", "until the results land"]],
+  ["waiting for results", ["waiting for results", "waiting for the results", "awaiting results"]],
 ];
+
+/**
+ * Phrases a listed form may sit inside without being a hit. Decision 0008 (rule 2) makes "Get a
+ * demo" one of the two calls to action on every page: a sales demo of a shipping product, not a
+ * site that calls itself a demo. Only this exact phrase is exempt; "Book a demo" still fails.
+ */
+export const VOICE_EXEMPT = ["get a demo"];
+const EXEMPT_RE = new RegExp(`\\b(?:${VOICE_EXEMPT.map((f) => f.replace(/ /g, "\\s+")).join("|")})\\b`, "gi");
+
+/**
+ * Table cells that say a result is still to come (decision 0008, rule 1): a cell whose whole
+ * text is one of these, case-insensitive, trailing dots or an ellipsis ignored.
+ */
+export const PENDING_CELLS = ["pending", "in progress", "tbd", "tba", "measuring", "not measured", "to be measured", "awaiting results", "soon"];
 
 const formRe = (forms: string[], flags = "i") =>
   new RegExp(`\\b(?:${[...forms].sort((a, b) => b.length - a.length).map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+")).join("|")})\\b`, flags);
@@ -79,6 +100,10 @@ export function pageVoiceSources(html: string, source: string): VoiceSource[] {
     else for (const s of jsStrings(m[2])) out.push({ source, where: "inline js string", text: s });
   }
   const noScripts = noComments.replace(/<script\b[\s\S]*?<\/script\s*>/gi, "").replace(/<style\b[\s\S]*?<\/style\s*>/gi, "");
+  for (const m of noScripts.matchAll(/<t([dh])\b[^>]*>([\s\S]*?)<\/t\1\s*>/gi)) {
+    const cell = visibleText(m[2]);
+    if (cell) out.push({ source, where: "table cell", text: cell });
+  }
   for (const m of noScripts.matchAll(/<([a-zA-Z][\w-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/g)) {
     const tag = m[1].toLowerCase();
     const a = parseAttrs(m[2]);
@@ -150,9 +175,15 @@ export function jsStrings(js: string): string[] {
 export function voiceHits(sources: VoiceSource[]): VoiceHit[] {
   const hits: VoiceHit[] = [];
   for (const s of sources) {
+    if (s.where === "table cell") {
+      const cell = s.text.toLowerCase().replace(/\s+/g, " ").replace(/(?:\.+|…)$/, "").trim();
+      if (PENDING_CELLS.includes(cell)) hits.push({ source: s.source, where: s.where, pattern: "pending cell", match: cell, snippet: s.text });
+      continue;
+    }
+    const text = s.text.replace(EXEMPT_RE, (m) => " ".repeat(m.length));
     for (const [pattern, forms] of VOICE_LIST) {
       const seen = new Set<string>();
-      for (const m of s.text.matchAll(formRe(forms, "gi"))) {
+      for (const m of text.matchAll(formRe(forms, "gi"))) {
         const match = m[0].toLowerCase().replace(/\s+/g, " ");
         if (seen.has(match)) continue;
         seen.add(match);

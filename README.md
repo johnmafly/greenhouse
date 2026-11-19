@@ -12,7 +12,7 @@ Owner decisions that change v7 are recorded in [docs/decisions/0000-owner-decisi
 
 | Path | What |
 |---|---|
-| `rubric/` | The rubric in force (`rubric-v2.yaml`, decision 0004). Weights, anchors, caps, graduation rule. |
+| `rubric/` | The rubric in force (`rubric-v3.yaml`, decision 0008; `rubric-v2.yaml` kept for rounds judged on it). Weights, anchors, caps, graduation rule. |
 | `schemas/` | JSON Schemas for every Greenhouse file (intake, submission, checks, review, score). |
 | `cli/` | The `greenhouse` CLI: `check`, `capture`, `submit`, `score`, `board`. Same gate code for Chiefs and the judge. |
 | `template/` | Unstyled project package template (structure only, never visual design). |

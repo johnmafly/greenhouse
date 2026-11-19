@@ -24,6 +24,8 @@ import { parseContentRef } from "./content.ts";
 import type { ContentMap } from "./content.ts";
 import { visibleText } from "./html.ts";
 import { askBoth, judgePairProblem, request } from "./judge.ts";
+import { MOCK_FILE, hasSampleNote, isListedMock, readMockListing } from "./mock.ts";
+import type { MockListing } from "./mock.ts";
 import type { Judge, JudgeVote, Verdict } from "./judge.ts";
 import { fetchPage, htmlPages } from "./site.ts";
 import type { Site } from "./site.ts";
@@ -329,9 +331,16 @@ export interface SweepOptions {
   concurrency?: number;
 }
 
-export function sweepCandidates(site: Site, ledger: LedgerClaim[]): { sentence: string; pages: string[]; covered_by: string | null }[] {
+/**
+ * Factual-looking sentences on the site, each with the ledger claim that covers it. Decision 0008:
+ * a sentence whose every number is a sample figure MOCK_FIGURES.md lists for its page, on a page
+ * that carries the sample note, is covered by MOCK_FIGURES.md (the mock-figures gate checks the
+ * note and the listing), not an outside claim missing from claims.yaml.
+ */
+export function sweepCandidates(site: Site, ledger: LedgerClaim[], mock: MockListing | null = null): { sentence: string; pages: string[]; covered_by: string | null }[] {
   const by = new Map<string, { sentence: string; pages: string[]; covered_by: string | null }>();
   for (const p of htmlPages(site)) {
+    const note = hasSampleNote(visibleText(p.body));
     for (const s of sentences(p.body)) {
       if (s.length < 25 || !FACT_RE.test(s)) continue;
       const key = normalizeText(s);
@@ -340,7 +349,7 @@ export function sweepCandidates(site: Site, ledger: LedgerClaim[]): { sentence: 
         if (!e.pages.includes(p.path)) e.pages.push(p.path);
         continue;
       }
-      by.set(key, { sentence: s.slice(0, 500), pages: [p.path], covered_by: coveredBy(s, ledger) });
+      by.set(key, { sentence: s.slice(0, 500), pages: [p.path], covered_by: coveredBy(s, ledger) ?? (isListedMock(s, p.path, note, mock) ? MOCK_FILE : null) });
     }
   }
   return [...by.values()];
@@ -352,7 +361,7 @@ export async function claimSweepGate(site: Site | null, dir: string | null, judg
   const pair = judgePairProblem(judges);
   if (pair) return agate(id, "fail", `cannot run: ${pair}`);
   const ledger = dir ? readLedger(dir) : { claims: [], error: "no clean checkout" };
-  const candidates = sweepCandidates(site, ledger.claims);
+  const candidates = sweepCandidates(site, ledger.claims, readMockListing(dir));
   const open = candidates.filter((c) => !c.covered_by);
   const max = opts.maxJudged ?? 80;
   const judged = open.slice(0, max);

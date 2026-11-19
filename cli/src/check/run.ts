@@ -39,7 +39,9 @@ import type { Judge } from "./judge.ts";
 import { greenhouseHome } from "./lock.ts";
 import { lighthouseGate } from "./lighthouse.ts";
 import type { LhRunner } from "./lighthouse.ts";
-import { noJsContentGate, reducedMotionGate } from "./motion.ts";
+import { mockFiguresGate } from "./mock.ts";
+import { noJsContentGate, noScrollRevealGate, reducedMotionGate } from "./motion.ts";
+import { menuFooterGate, sameCtasGate } from "./playbook.ts";
 import { serveStatic } from "./serve.ts";
 import type { StaticServer } from "./serve.ts";
 import { crawl, htmlPages, normalizeBase } from "./site.ts";
@@ -230,6 +232,9 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     await step("noindex", () => noindexGate(site, why));
     await step("spec-samples", () => specSamplesGate(build.checkoutDir, site, why));
     await step("docs", () => docsGate(site, build.checkoutDir, why));
+    await step("mock-figures", () => mockFiguresGate(site, build.checkoutDir, why));
+    await step("same-ctas", () => sameCtasGate(site, why));
+    await step("menu-footer-parity", () => menuFooterGate(site, why));
     let browserWhy = why;
     const startBrowser = async (): Promise<Browser | null> => {
       if (!site) return null;
@@ -277,6 +282,7 @@ export async function runCheck(opts: CheckOptions): Promise<Checks> {
     await step("signup-flow", async () => signupGate(await liveBrowser(), site ? base : null, browserWhy, 12, signupStart(content)));
     await step("reduced-motion", async () => reducedMotionGate(await liveBrowser(), site ? base : null, browserWhy));
     await step("no-js-content", async () => noJsContentGate(await liveBrowser(), site ? base : null, contentSections(content), browserWhy));
+    await step("no-scroll-reveal", async () => noScrollRevealGate(await liveBrowser(), site ? base : null, start.routes, browserWhy));
     const evidenceDir = opts.evidenceDir ?? (opts.roundDir ? join(opts.roundDir, "evidence") : join(greenhouseHome(), "evidence", `${slug}-${sha.slice(0, 12)}`));
     await step("webkit-iphone", async () => webkitIphoneGate(site ? base : null, start.routes, why, { evidenceDir, chromium: await liveBrowser() }));
     if (browser) {

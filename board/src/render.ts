@@ -50,7 +50,7 @@ function dateText(iso: string): string {
   return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
 }
 
-// Short labels for rubric v2 dimension ids (decision 0004); other ids fall back to the rubric's name.
+// Short labels for rubric v2 and v3 dimension ids (decisions 0004 and 0008); other ids fall back to the rubric's name.
 const SHORT: Record<string, string> = {
   design_identity: "Design",
   motion_interaction: "Motion",
@@ -60,6 +60,7 @@ const SHORT: Record<string, string> = {
   docs_buildability: "Docs",
   evidence_truth: "Evidence",
   business_signup: "Business",
+  product_playbook: "Playbook",
 };
 
 function dimName(ctx: RenderContext, version: number, id: string): string {

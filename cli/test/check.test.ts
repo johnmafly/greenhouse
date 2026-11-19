@@ -573,13 +573,15 @@ test("lighthouse: median of runs; performance >= 90, CLS <= 0.1, TBT <= 200 ms e
 
 // --- whole check, no browser ------------------------------------------------------------------
 
-test("gate ids that carry a named cap in score.ts are not reused by deterministic gates, except canary and reduced-motion", () => {
-  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "docs", "template-likeness", "secrets", "asset-cache", "axe", "signup-flow", "no-js-content", "webkit-iphone", "lighthouse"];
+test("gate ids that carry a named cap in score.ts are not reused by deterministic gates, except canary, reduced-motion and product-voice", () => {
+  const ids = ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "noindex", "spec-samples", "docs", "mock-figures", "same-ctas", "menu-footer-parity", "template-likeness", "secrets", "asset-cache", "axe", "signup-flow", "no-js-content", "no-scroll-reveal", "webkit-iphone", "lighthouse"];
   for (const id of ids) assert.ok(!(id in CAP_GATES), id);
   // A failed canary gate carries the integrity cap (5.0), reason canary_leak (decision 0003).
   assert.deepEqual(CAP_GATES["canary"], { cap: "integrity", reason: "canary_leak" });
   // A failed reduced-motion gate carries the quality cap (7.0), reason motion_ignores_reduced_motion (rubric v2).
   assert.deepEqual(CAP_GATES["reduced-motion"], { cap: "quality", reason: "motion_ignores_reduced_motion" });
+  // A failed product-voice gate (hedged or waiting-for-results copy) carries the quality cap, reason hedged_copy (decision 0008).
+  assert.deepEqual(CAP_GATES["product-voice"], { cap: "quality", reason: "hedged_copy" });
 });
 
 test("runCheck without a browser: browser gates fail with the reason (never pass), checks.json is valid", async () => {
@@ -593,12 +595,12 @@ test("runCheck without a browser: browser gates fail with the reason (never pass
     assert.equal(checks.slug, "example-seed");
     assert.equal(checks.all_green, false);
     const by = Object.fromEntries(checks.gates.map((g) => [g.id, g]));
-    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "docs", "secrets", "asset-cache"])
+    for (const id of ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "docs", "mock-figures", "same-ctas", "menu-footer-parity", "secrets", "asset-cache"])
       assert.equal(by[id].status, "pass", `${id}: ${by[id].summary}`);
     assert.equal(by.canary.status, "skip");
     // The template is the template: near-identity by definition.
     assert.equal(by["template-likeness"].status, "fail");
-    for (const id of ["axe", "signup-flow", "reduced-motion", "no-js-content", "lighthouse"]) {
+    for (const id of ["axe", "signup-flow", "reduced-motion", "no-js-content", "no-scroll-reveal", "lighthouse"]) {
       assert.equal(by[id].status, "fail", id);
       assert.match(by[id].summary, /browser unavailable/);
     }

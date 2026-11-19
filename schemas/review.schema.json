@@ -40,8 +40,14 @@
           "severity": { "enum": ["must", "should", "could"] },
           "title": { "type": "string", "minLength": 1 },
           "detail": { "type": "string" },
-          "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
-        }
+          "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "rule": {
+            "description": "Decision 0008: the standing owner rule this finding is a miss of (vision_first: rule 1; playbook: rule 2). A rule miss is always severity must, and score.json lists it in must_fix for the next round.",
+            "enum": ["vision_first", "playbook"]
+          }
+        },
+        "if": { "properties": { "rule": { "type": "string" } }, "required": ["rule"] },
+        "then": { "properties": { "severity": { "const": "must" } } }
       }
     },
     "flags": {
@@ -53,6 +59,10 @@
         "reviewer_instruction": { "type": "boolean" },
         "template_structure": {
           "description": "Rubric v2 sameness: the structure or look is template output (a stock hero + feature grid + pricing table, the owner's example sections used as the fixed skeleton, or near-identical to the template or a portfolio sibling). A panel majority caps the composite at the sameness cap.",
+          "type": "boolean"
+        },
+        "hedged_vision": {
+          "description": "Rubric v3 (decision 0008, rule 1): the site shows features as not working yet, results as pending or to come, or plays safe where it should show the product working. A panel majority caps the composite at the quality cap (hedged_vision). Optional; absent means false.",
           "type": "boolean"
         }
       }

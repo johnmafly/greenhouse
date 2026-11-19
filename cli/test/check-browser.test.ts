@@ -13,7 +13,7 @@ import { validate } from "../src/lib/schemas.ts";
 import { parse as parseYaml } from "yaml";
 import { axeGate, browserAvailable, isCloudflareRum, launchBrowser, signupGate } from "../src/check/browser.ts";
 import { contentSections, parseContentMap } from "../src/check/content.ts";
-import { noJsContentGate, reducedMotionGate } from "../src/check/motion.ts";
+import { noJsContentGate, noScrollRevealGate, reducedMotionGate } from "../src/check/motion.ts";
 import { lighthouseGate } from "../src/check/lighthouse.ts";
 import { htmlPages } from "../src/check/site.ts";
 import { launchWebkit, webkitAvailable, webkitIphoneGate } from "../src/check/webkit.ts";
@@ -370,6 +370,34 @@ test("no-js-content: passes on the template and on script-gated reveals; fails o
   }
 });
 
+test("no-scroll-reveal: passes on the template and on a load-time fade; fails when content waits for a scroll (decision 0008)", { skip }, async () => {
+  const b = await getBrowser();
+  const routes = ["/", "/pricing/"];
+  const LOAD_FADE = home(`@keyframes fade { from { opacity: 0; } } .reveal { animation: fade .4s ease-out; }`);
+  for (const [name, mutate] of [["template", undefined], ["load-time fade", LOAD_FADE]] as const) {
+    const s = await serveSite(mutate);
+    try {
+      const g = await noScrollRevealGate(b, s.server.url, routes, undefined, 800);
+      assert.equal(g.status, "pass", `${name}: ${g.summary}`);
+      assert.equal(g.metrics?.pages, 2);
+    } finally {
+      await s.close();
+    }
+  }
+  // Both reveal styles hide below-the-fold sections until an IntersectionObserver sees them.
+  for (const [name, mutate] of [["CSS scroll reveal", SCROLL_REVEAL], ["script-gated scroll reveal", GOOD_MOTION]] as const) {
+    const s = await serveSite(mutate);
+    try {
+      const g = await noScrollRevealGate(b, s.server.url, routes, undefined, 800);
+      assert.equal(g.status, "fail", name);
+      assert.match(g.summary, /without scrolling, 1 of 2 pages hide text: \/ \(\d+ text element\(s\) hidden until scrolled to/);
+    } finally {
+      await s.close();
+    }
+  }
+  assert.equal((await noScrollRevealGate(null, null, routes)).status, "fail");
+});
+
 test("lighthouse (real, 1 run): template passes, an inaccessible page fails", { skip }, async () => {
   const lockPath = join(tmp(), "perf.lock");
   const ok = await serveSite();
@@ -410,7 +438,7 @@ test("greenhouse check CLI: the template passes every gate but template-likeness
   assert.equal(checks.sha, sha);
   assert.deepEqual(
     checks.gates.map((g: { id: string }) => g.id),
-    ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "docs", "template-likeness", "secrets", "canary", "asset-cache", "axe", "signup-flow", "reduced-motion", "no-js-content", "webkit-iphone", "lighthouse"],
+    ["build", "package-files", "claim-links", "deployed-sha", "routes", "links", "page-structure", "placeholder", "product-voice", "noindex", "spec-samples", "docs", "mock-figures", "same-ctas", "menu-footer-parity", "template-likeness", "secrets", "canary", "asset-cache", "axe", "signup-flow", "reduced-motion", "no-js-content", "no-scroll-reveal", "webkit-iphone", "lighthouse"],
   );
   assert.deepEqual(
     checks.gates.filter((g: { status: string }) => g.status !== "pass").map((g: { id: string; status: string }) => `${g.id}:${g.status}`),
@@ -437,6 +465,7 @@ test("greenhouse check CLI: a stub package reports its failures and exits 1", { 
   const checks = JSON.parse(readFileSync(out, "utf8"));
   assert.ok(validate("checks", checks).valid);
   const failed = checks.gates.filter((g: { status: string }) => g.status === "fail").map((g: { id: string }) => g.id);
-  assert.deepEqual(failed, ["placeholder", "template-likeness", "canary", "signup-flow"]);
-  assert.match(r.stderr, /FAILED: placeholder, template-likeness, canary, signup-flow/);
+  // The stub signup page also drops the footer (menu-footer-parity, decision 0008).
+  assert.deepEqual(failed, ["placeholder", "menu-footer-parity", "template-likeness", "canary", "signup-flow"]);
+  assert.match(r.stderr, /FAILED: placeholder, menu-footer-parity, template-likeness, canary, signup-flow/);
 });

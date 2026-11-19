@@ -10,7 +10,7 @@ to each Chief when its seed is onboarded; it is not sent by any other route.
 The product and its package: the project repo (for BotRampart, `johnmafly/botrampart-site`), its
 site, docs, pricing, mock signup, build spec (`spec/openapi.yaml`), claims ledger (`claims.yaml`)
 and `STATE.md`. What a package must contain is in [package-contract.md](package-contract.md); how it
-is scored is in `rubric/rubric-v2.yaml`, and what a good site looks like is in
+is scored is in `rubric/rubric-v3.yaml`, and what a good site looks like is in
 [design-bar.md](design-bar.md). The intake (`portfolio/<slug>/intake.yaml`) fixes your intent, buyer,
 open-source model, locked assumptions, non-goals, budget and exposure.
 
@@ -18,8 +18,8 @@ You do not own Greenhouse, scores, other projects, or any Cloudflare setting.
 
 ## Design is the job (decision 0004)
 
-Design, motion, copy and distinctness make up 65% of the score, and each needs a panel median of
-8.5 to graduate. The owner's words on BotRampart v1: "how come every product site looks the
+Design, motion, copy, distinctness and the product-site playbook make up 70% of the score
+(rubric v3), and each needs a panel median of 8.5 to graduate. The owner's words on BotRampart v1: "how come every product site looks the
 same?"
 
 - **The example sections are content, not structure.** Pricing, docs and a comparison must
@@ -45,8 +45,32 @@ reminding me it's not a real product, I need to make it look like a real product
   "by design". The `product-voice` gate fails on the banned list in
   [package-contract.md](package-contract.md), in visible text and in what the site serves
   (meta tags, alt text, JSON-LD, JavaScript strings, `llms.txt`, linked YAML and text files).
-- Honesty still holds: no invented customers, metrics, testimonials, logos or availability. Where
-  a fact cannot be sourced, cut the sentence rather than hedge it.
+- Honesty about the outside world still holds: no invented customers, testimonials or logos, and
+  every fact about a market, a vendor, a standard or a law is sourced in `claims.yaml`. Sample
+  figures for your own product follow decision 0008 (below).
+
+## Show the vision, and build to the playbook (decision 0008)
+
+The owner: "not only saved to your team memory, let it be part of the scoring, the greenhouse, the
+RSI. and your studies from Mastra shall apply to all upcoming projects instead of only BotRampart."
+Build to both rules from round one; a miss of either is a must-fix item in the next ruling.
+
+- **Rule 1, vision-first.** The site is in-house brainstorming that convinces the owner the product
+  will be built like this. Every feature is shown working. No "coming next", "not available yet",
+  "not measured yet", "results pending", "until results land", "waiting for results", no pending
+  or progress cells. Benchmarks show confident, full results. Mark each sample figure `data-mock`,
+  put the note "Sample figures for the private preview" beside it, and list every number in
+  `MOCK_FIGURES.md` ([package-contract.md](package-contract.md)). The `product-voice` and
+  `mock-figures` gates fail otherwise, and a panel majority flagging hedged copy caps the score at
+  7.0.
+- **Rule 2, the playbook** (the Mastra study): real product screens instead of illustrations;
+  one-word product names and five-word jobs in menus; the same two calls to action on every page
+  (Get a demo, plus Quickstart or Copy agent prompt); two-tone headlines (a bold claim plus a grey
+  follow-on); feature cards of a name, a three-word punchline and one concrete sentence;
+  plain-text docs (`llms.txt` and a Markdown twin of each doc); solutions pages by buyer that are
+  not thin; a menu and footer that list the same products; no content hidden until scroll. The
+  `same-ctas`, `menu-footer-parity`, `docs` and `no-scroll-reveal` gates check the mechanical part;
+  reviewers score the rest under `product_playbook` (15%).
 
 ## Publish a full user guide (decision 0006)
 
@@ -74,8 +98,8 @@ etc…"
 | Intake | You check `intake.yaml` against your own plans and send VC Joe your questions (QUESTION). VC Joe brings the owner one consolidated intake to approve. | The owner approves; the project is a Seed. |
 | Build | You build the package. Keep `STATE.md` current. Preview locally and run `greenhouse check` (preflight) as often as you like: it is free and uses no round. | Preflight green. |
 | Submit | `greenhouse submit` opens a pull request in `johnmafly/greenhouse` that adds only `portfolio/<slug>/rounds/NN/submission.yaml` (SUBMIT). Mark it ready for review. | You receive a RULING. |
-| Revise | Address the findings, not just the top three enhancements. You may reject an enhancement with a reason; the next blind panel decides who was right. | Next submission, or the round budget is spent. |
-| Cold read | When the package meets graduation v2 (composite 9.0 or more, design, motion, copy and distinctness each 8.5 or more) VC Joe brings it to the owner. | The owner graduates it or marks changes (OWNER FEEDBACK). |
+| Revise | Fix every must-fix item first: each rule-1 or rule-2 miss is one (`score.json` `must_fix`, listed in the ruling). Then address the other findings, not just the top three enhancements. You may reject an enhancement with a reason; the next blind panel decides who was right. | Next submission, or the round budget is spent. |
+| Cold read | When the package meets graduation v3 (composite 9.0 or more; design, motion, copy, distinctness and playbook each 8.5 or more) VC Joe brings it to the owner. | The owner graduates it or marks changes (OWNER FEEDBACK). |
 | Hand-off | Tag `graduation-v1`, write `GRADUATION.md` (links, spec, prediction, open risks). The owner decides publication and build kickoff. | Package frozen. |
 
 At most one judged round per project per day. Unchanged content returns the previous ruling.
@@ -85,7 +109,7 @@ At most one judged round per project per day. Unchanged content returns the prev
 | Message | Direction | Channel | Rule |
 |---|---|---|---|
 | SUBMIT | Chief to VC Joe | Pull request in `johnmafly/greenhouse` titled `submission: <slug> round NN` | The only way to start a round. It may add files only under its own `portfolio/<slug>/rounds/NN/`. |
-| RULING | VC Joe to Chief | Merged files in `portfolio/<slug>/rounds/NN/` (`score.json`, `ruling.md`), plus a message to your conversation | The files are the record; the message is the wake-up. |
+| RULING | VC Joe to Chief | Merged files in `portfolio/<slug>/rounds/NN/` (`score.json`, `ruling.md`), plus a message to your conversation | The files are the record; the message is the wake-up. `ruling.md` opens with "Must fix next round": every entry of `score.json` `must_fix` (rule-1 and rule-2 misses), then any failed rule gate (`product-voice`, `mock-figures`, `same-ctas`, `menu-footer-parity`, `no-scroll-reveal`, `docs`). |
 | QUESTION | Chief to VC Joe | Message to VC Joe's conversation | Do not ask the owner directly. VC Joe batches what only the owner can answer. |
 | APPEAL | Chief to VC Joe | `portfolio/<slug>/rounds/NN/appeal.md` | One per round, only on a factual error in a gate or finding. A fresh reviewer checks the point; the outcome is logged. |
 | OWNER FEEDBACK | Owner to Chief, through VC Joe | `portfolio/<slug>/feedback/`, word for word | Outranks reviewers and VC Joe's advice. |
@@ -98,10 +122,12 @@ At most one judged round per project per day. Unchanged content returns the prev
 2. **Never read `greenhouse-judge`** (reviewer briefs, validation set, answer key), on disk or
    through GitHub, and never read another project's repo, workspace or dossier. The judge repo
    holds a canary string; any submission that contains it fails.
-3. **No invented customers, quotes or numbers.** No testimonials, logos, customer counts or
-   quotes that are not real. Every public factual claim goes in `claims.yaml` with its source URL,
-   a verbatim supporting quote and the date checked. Your own targets, prices and cost figures
-   are stated as yours (in `cost_model:` and `STATE.md`), never as outside facts.
+3. **No invented customers or quotes.** No testimonials, logos, customer counts or quotes that
+   are not real. Every public factual claim about the outside world goes in `claims.yaml` with its
+   source URL, a verbatim supporting quote and the date checked. Sample figures (benchmarks,
+   metrics) are shown confidently, marked `data-mock`, with "Sample figures for the private
+   preview" beside them and every number in `MOCK_FIGURES.md` (decision 0008). Your prices and
+   cost figures live in `cost_model:` and `STATE.md`.
 4. **No outreach, ads or real signups** unless the intake's `exposure` permits them (for
    BotRampart it does not). The mock signup stores nothing and its last screen says it is a
    preview. Sites stay `noindex` until the owner publishes.
